@@ -153,7 +153,7 @@ typedef enum {
 	V_IR_RECORD				= 50,	//!< Record IR codes S_IR for playback
 	V_PH					= 51,	//!< S_WATER_QUALITY, water PH
     V_ORP					= 52,	//!< S_WATER_QUALITY, water ORP : redox potential in mV
-    V_EC					= 53,	//!< S_WATER_QUALITY, water electric conductivity μS/cm (microSiemens/cm)
+    V_EC					= 53,	//!< S_WATER_QUALITY, water electric conductivity uS/cm (microSiemens/cm)
     V_VAR					= 54,	//!< S_POWER, Reactive power: volt-ampere reactive (var)
     V_VA					= 55,	//!< S_POWER, Apparent power: volt-ampere (VA)
     V_POWER_FACTOR			= 56,	//!< S_POWER, Ratio of real power to apparent power: floating point value in the range [-1,..,1]
@@ -372,3 +372,4 @@ uint8_t array[HEADER_SIZE + MAX_PAYLOAD + 1];
 
 #endif
 /** @}*/
+

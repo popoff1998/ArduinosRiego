@@ -13,15 +13,15 @@
 //Variables de actuadores
 #define NUMBER_OF_RELAYS 9
 
-struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-INT", HIGH, LOW, KEEP, true},
-                          {1, 36 , "RELE1-INT", LOW, HIGH, SETOFF, true},
-                          {2, 34 , "RELE2-INT", LOW, HIGH, SETOFF, true},
-                          {3, 32 , "RELE3-INT", LOW, HIGH, SETOFF, true},
-                          {4, 30 , "RELE4-INT", LOW, HIGH, SETOFF, true},
-                          {5, 28 , "RELE5-INT", LOW, HIGH, SETOFF, true},
-                          {6, 26 , "RELE6-INT", LOW, HIGH, SETOFF, true},
-                          {7, 24 , "RELE7-INT", LOW, HIGH, SETOFF, true},
-                          {8, 22 , "RELE8-INT", LOW, HIGH, SETOFF, true}
+struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-INT", HIGH, LOW, KEEP, 3600, 0, true},
+                          {1, 36 , "RELE1-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {2, 34 , "RELE2-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {3, 32 , "RELE3-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {4, 30 , "RELE4-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {5, 28 , "RELE5-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {6, 26 , "RELE6-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {7, 24 , "RELE7-INT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {8, 22 , "RELE8-INT", LOW, HIGH, SETOFF, 3600, 0, true}
                        };
 
 //Variables de los sensores
@@ -42,3 +42,4 @@ struct sSENSOR Sensor [] = {  {10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHU
 #endif
 
                   
+

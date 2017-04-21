@@ -7,13 +7,19 @@
 
 #ifdef W5100GATEWAY
   #include "W5100_Sensors.h"
-#else
+#endif
+
+#ifdef W5100TEST
+  #include "W5100TEST_Sensors.h"
+#endif
+
+#ifdef USBGATEWAY
   #include "USB_Sensors.h"
 #endif
 
 #include "MyMessage.h"
 
-//Globales para los diferentes tipos de sensores. Mirar más adelante para ver si soporta varios
+//Globales para los diferentes tipos de sensores. Mirar mas adelante para ver si soporta varios
 //Defines y estructura para flags
 enum {
   ENABLED = 0x01,
@@ -45,6 +51,8 @@ struct sRELE {
   bool ON;
   bool OFF;
   int initState;
+  int MaxTime;
+  unsigned long EndMillis;
   bool enabled;
 };
 
@@ -104,6 +112,7 @@ struct sCOUNTER {
   #define POWERDELAY 10000
   #define MOISTURE_MINSENSOR 300
   #define MOISTURE_MAXCB     200
+  #define MAXTIMEFACTOR      1 //1 si ponemos el tiempo en segundos, 60 en minutos
 
 //Defines de tipos HWtype
 #define DALLAS_18B20  0
@@ -119,12 +128,12 @@ struct sCOUNTER {
 #define S_MEMORY_FREE 2
 
 //Opciones de depuracion
-#define MY_DEBUG
+//#define MY_DEBUG
 #define EXTRADEBUG
 #define DEBUG
 //#define COUNTERDEBUG
 //#define COUNTEREXTRADEBUG
-#define TRACE
+//#define TRACE
 
 //Funciones
 void setup_sensor_DHT11(sSENSOR);
@@ -145,3 +154,4 @@ void setup_counter();
 void process_counter();
 
 #endif
+

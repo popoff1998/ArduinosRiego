@@ -1,5 +1,5 @@
-#ifndef W5100_h
-#define W5100_h
+#ifndef W5100TEST_h
+#define W5100TEST_h
 //Defines de configuracion
 #define MY_NODE_ID 5
 #define SKETCH_NAME "Gateway Ethernet"
@@ -22,7 +22,7 @@
 #define NUMBER_OF_RELAYS 9
 
 struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 3600, 0, true},
-                          {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 20, 0, true},
                           {2, 24 , "RELE2-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {3, 26 , "RELE3-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {4, 28 , "RELE4-EXT", LOW, HIGH, SETOFF, 3600, 0, true},

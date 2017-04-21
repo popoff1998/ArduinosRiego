@@ -5,9 +5,16 @@
 #ifdef W5100GATEWAY
   #include "W5100.h"
   #include "W5100_Sensors.h"
-#else
+#endif
+
+#ifdef USBGATEWAY
   #include "USB.h"
   #include "USB_Sensors.h"
+#endif
+
+#ifdef W5100TEST
+  #include "W5100TEST.h"
+  #include "W5100TEST_Sensors.h"
 #endif
 
 #include <MySensors.h>
@@ -41,7 +48,7 @@ void initRelays(const sRELE Rele[], int nRelays)
           digitalWrite(Rele[i].pin, loadState(i)?Rele[i].ON:Rele[i].OFF);
           break;
         default:
-          //Por defecto y por seguridad lo ponemos a OFF si está mal definido en la estructura
+          //Por defecto y por seguridad lo ponemos a OFF si esta mal definido en la estructura
           digitalWrite(Rele[i].pin, Rele[i].OFF);
           break;
       }
@@ -62,6 +69,37 @@ void presentRelays(const sRELE Rele[], int nRelays)
           Serial.print("El estado del rele ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(digitalRead(Rele[i].pin));
         #endif
       send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));
+    }
+  }
+}
+
+//Devolvemos el estado del rele: true encendido, false apagado
+bool releStatus(sRELE Rele)
+{
+  if(digitalRead(Rele.pin) == Rele.ON) return true;
+  else return false;
+}
+
+
+//Aqui procesaremos los reles para ver si han llegado a su tiempo maximo 
+void process_relays()
+{
+  for (int i=0; i<NUMBER_OF_RELAYS;i++) {
+    #ifdef EXTRADEBUG
+      Serial.print("ESTADO RELE ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(releStatus(Rele[i]));    
+    #endif
+
+    if (Rele[i].MaxTime == 0 || !releStatus(Rele[i]) ) continue; 
+
+    if (millis() > Rele[i].EndMillis) {
+      #ifdef DEBUG
+        Serial.print("*RELE ");Serial.print(Rele[i].desc);Serial.println(" HA LLEGADO AL MAXIMO DE TIEMPO, APAGANDO*");
+      #endif
+      //Apagamos el rele ...
+      digitalWrite(Rele[i].pin,Rele[i].OFF);
+      //... y notificamos a domoticz
+      MyMessage relayMsg(Rele[i].id,S_LIGHT);
+      send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));       
     }
   }
 }
@@ -124,8 +162,12 @@ void receive(const MyMessage &message) {
     digitalWrite(Rele[idx].pin, message.getBool()?Rele[idx].ON:Rele[idx].OFF);
     // Almacenar estado en la eeprom independientemente de initState (por si acaso)
     saveState(idx, message.getBool());
+
+    //Iniciamos el tiempo
+    if(Rele[idx].MaxTime != 0) {
+      Rele[idx].EndMillis = millis() + (unsigned long)Rele[idx].MaxTime * MAXTIMEFACTOR * 1000;
+    }
     #ifdef DEBUG
-     // Escribir informacion de debug
      Serial.print("Cambio entrante para sensor:"); Serial.print(message.sensor); Serial.print(", Nuevo status: "); Serial.println(message.getBool());
     #endif
   }
@@ -196,6 +238,10 @@ void loop() {
   #ifdef HAVE_COUNTER
     process_counter();
   #endif
+
+  //Procesar los reles
+  process_relays();
+  
     //Bucle para procesar todos los sensores
   for (int i=0; i<NUMBER_OF_SENSORS; i++) {
     //Creamos el mensaje
@@ -230,13 +276,16 @@ void loop() {
               request(Sensor[i].id,V_TEXT);
             }
             process_sensor_INFO(Sensor[i]);
+         #endif
             break;
-          #endif
         case S_ARDUINO_TEMP:
-          process_sensor_arduino_temp(Sensor[i]);
+          #ifdef HAVE_ARDUINOTEMP
+            process_sensor_arduino_temp(Sensor[i]);
+          #endif
           break;
       }
     }
   }
   wait(pollTime);
 }
+

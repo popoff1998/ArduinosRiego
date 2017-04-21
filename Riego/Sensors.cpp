@@ -5,7 +5,13 @@
 
 #ifdef W5100GATEWAY
   #include "W5100_Sensors.h"
-#else
+#endif
+
+#ifdef W5100TEST
+  #include "W5100TEST_Sensors.h"
+#endif
+
+#ifdef USBGATEWAY
   #include "USB_Sensors.h"
 #endif
 
@@ -27,7 +33,9 @@ int getSensorIdxFromId(int id)
   return NOTFOUND;
 }
 
+
 //Temperatura arduino
+#ifdef HAVE_ARDUINOTEMP
 double GetArduinoTemp(void)
 {
   unsigned int wADC;
@@ -61,7 +69,7 @@ void process_sensor_arduino_temp(sSENSOR _Sensor)
   #endif
   send(_Sensor.msg->set(temperatura,1));
 }
-
+#endif
 
 //Para pseudo sensores tio INFO
 #ifdef HAVE_INFO
@@ -240,7 +248,7 @@ void isr_counter()
       #endif
       return;
     }
-    //El flujo instantaneo por minuto será: 60 seg * 1.000.000 microsec dividido entre el intervalo en microsegundos
+    //El flujo instantaneo por minuto sera: 60 seg * 1.000.000 microsec dividido entre el intervalo en microsegundos
     Counter.flow = 60000000.0 / ((float)interval * (float)Counter.PULSESFORLITER);
   }
   #ifdef COUNTEREXTRADEBUG
@@ -311,3 +319,4 @@ void process_counter()
   sei();
 }
 #endif
+
