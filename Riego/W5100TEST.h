@@ -22,7 +22,7 @@
 #define NUMBER_OF_RELAYS 9
 
 struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 3600, 0, true},
-                          {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 20, 0, true},
+                          {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 60, 0, true},
                           {2, 24 , "RELE2-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {3, 26 , "RELE3-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {4, 28 , "RELE4-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
@@ -49,7 +49,13 @@ struct sSENSOR Sensor [] = {  {10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHU
 
 
 //Includes especificos de la plataforma
+#include <SPI.h>
 #include <Ethernet.h>
+#include <ICMPPing.h>
+
+IPAddress pingAddr(192,168,100,60);
+SOCKET pingSocket = 0;
+char buffer [256];
+ICMPPing ping(pingSocket, (uint16_t)random(0, 255));
 
 #endif
-

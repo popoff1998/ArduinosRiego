@@ -27,7 +27,7 @@ int getRelayIdxFromId(int id)
   return NOTFOUND;
 }
 
-void initRelays(const sRELE Rele[], int nRelays)
+void initRelays(sRELE Rele[], int nRelays)
 {
   for (int i=0 ; i<nRelays; i++) {
     if (Rele[i].enabled) {
@@ -51,6 +51,10 @@ void initRelays(const sRELE Rele[], int nRelays)
           //Por defecto y por seguridad lo ponemos a OFF si esta mal definido en la estructura
           digitalWrite(Rele[i].pin, Rele[i].OFF);
           break;
+      }
+      //Ajustamos EndMillis por si el sensor comienza encendido
+      if(Rele[i].MaxTime != 0) {
+        Rele[i].EndMillis = millis() + (unsigned long)Rele[i].MaxTime * MAXTIMEFACTOR * 1000;
       }
     }
   }
@@ -81,15 +85,15 @@ bool releStatus(sRELE Rele)
 }
 
 
-//Aqui procesaremos los reles para ver si han llegado a su tiempo maximo 
+//Aqui procesaremos los reles para ver si han llegado a su tiempo maximo
 void process_relays()
 {
   for (int i=0; i<NUMBER_OF_RELAYS;i++) {
     #ifdef EXTRADEBUG
-      Serial.print("ESTADO RELE ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(releStatus(Rele[i]));    
+      Serial.print("ESTADO RELE ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(releStatus(Rele[i]));
     #endif
 
-    if (Rele[i].MaxTime == 0 || !releStatus(Rele[i]) ) continue; 
+    if (Rele[i].MaxTime == 0 || !releStatus(Rele[i]) ) continue;
 
     if (millis() > Rele[i].EndMillis) {
       #ifdef DEBUG
@@ -99,7 +103,7 @@ void process_relays()
       digitalWrite(Rele[i].pin,Rele[i].OFF);
       //... y notificamos a domoticz
       MyMessage relayMsg(Rele[i].id,S_LIGHT);
-      send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));       
+      send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));
     }
   }
 }
@@ -170,6 +174,7 @@ void receive(const MyMessage &message) {
     #ifdef DEBUG
      Serial.print("Cambio entrante para sensor:"); Serial.print(message.sensor); Serial.print(", Nuevo status: "); Serial.println(message.getBool());
     #endif
+    return;
   }
   //Procesamos los mensajes V_TEXT
   #ifdef HAVE_INFO
@@ -179,6 +184,10 @@ void receive(const MyMessage &message) {
       #endif
       receive_sensor_INFO(message);
     }
+    return;
+  #endif
+  #ifdef EXTRADEBUG
+    Serial.print("RECIBIDO MENSAJE NO CONTROLADO DE TIPO: ");Serial.println(message.type);
   #endif
 }
 
@@ -195,6 +204,10 @@ void presentation()
   #endif
   Presented = true;
   Serial.println("Finalizando presentacion");
+  #ifdef MY_GATEWAY_W5100
+    //Pingueamos una primera vez por si se cae la conexion para que reconecte antes del loop
+    ICMPEchoReply echoReply = ping(pingAddr, 4);
+  #endif
 }
 
 void setup()
@@ -234,14 +247,38 @@ void loop() {
     wait(POLL_TIME);
     return;
   }
-    //Procesar el contador
+
+  //Watchdog de conexion con Domoticz
+  #ifdef MY_GATEWAY_W5100
+    ICMPEchoReply echoReply = ping(pingAddr, 4);
+    if (echoReply.status == SUCCESS) {
+      #ifdef EXTRADEBUG
+        Serial.println("PING EXITOSO");
+      #endif
+      pingFailures = 0;
+    }
+    else {
+      pingFailures ++;
+      #ifdef EXTRADEBUG
+        Serial.print("PING FALLIDO, Pings hasta reset: ");Serial.println(MAXPINGFAILURES - pingFailures);
+      #endif
+      if (pingFailures > MAXPINGFAILURES) {
+        //Reseteamos
+        Serial.println("*** ALCANZADO EL MAXIMO DE PINGFAILURES, RESETEAMOS ***");
+        wait(3000);
+        asm("jmp 0x0000");
+      }
+    }
+  #endif
+
+   //Procesar el contador
   #ifdef HAVE_COUNTER
     process_counter();
   #endif
 
   //Procesar los reles
   process_relays();
-  
+
     //Bucle para procesar todos los sensores
   for (int i=0; i<NUMBER_OF_SENSORS; i++) {
     //Creamos el mensaje
@@ -288,4 +325,3 @@ void loop() {
   }
   wait(pollTime);
 }
-

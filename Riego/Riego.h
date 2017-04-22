@@ -113,6 +113,7 @@ struct sCOUNTER {
   #define MOISTURE_MINSENSOR 300
   #define MOISTURE_MAXCB     200
   #define MAXTIMEFACTOR      1 //1 si ponemos el tiempo en segundos, 60 en minutos
+  #define MAXPINGFAILURES    2 //Maximo de fallos antes de resetear el arduino
 
 //Defines de tipos HWtype
 #define DALLAS_18B20  0
@@ -154,4 +155,3 @@ void setup_counter();
 void process_counter();
 
 #endif
-
