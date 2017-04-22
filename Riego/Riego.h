@@ -113,7 +113,7 @@ struct sCOUNTER {
   #define MOISTURE_MINSENSOR 300
   #define MOISTURE_MAXCB     200
   #define MAXTIMEFACTOR      1 //1 si ponemos el tiempo en segundos, 60 en minutos
-  #define MAXPINGFAILURES    2 //Maximo de fallos antes de resetear el arduino
+  #define MAXPINGFAILURES    10 //Maximo de fallos antes de resetear el arduino
   #define RESETPIN          38//Pseudopin para el pseudo switch de reset
 
 //Defines de tipos HWtype
