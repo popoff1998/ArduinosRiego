@@ -19,7 +19,7 @@
 #include "Riego.h"
 
 //Variables de actuadores
-#define NUMBER_OF_RELAYS 9
+#define NUMBER_OF_RELAYS 10
 
 struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                           {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
@@ -29,7 +29,8 @@ struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 0, 0, tr
                           {5, 30 , "RELE5-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {6, 32 , "RELE6-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {7, 34 , "RELE7-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
-                          {8, 36 , "RELE8-EXT", LOW, HIGH, SETOFF, 3600, 0, true}
+                          {8, 36 , "RELE8-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
+                          {9, 38 , "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true}
                        };
 
 //Variables de los sensores

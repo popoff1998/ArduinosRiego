@@ -30,7 +30,7 @@ int getRelayIdxFromId(int id)
 void initRelays(sRELE Rele[], int nRelays)
 {
   for (int i=0 ; i<nRelays; i++) {
-    if (Rele[i].enabled) {
+    if (Rele[i].enabled && Rele[i].pin != RESETPIN) {
       // Poner el rele en output mode
       pinMode(Rele[i].pin, OUTPUT);
       //Poner initState
@@ -72,7 +72,10 @@ void presentRelays(const sRELE Rele[], int nRelays)
         #ifdef EXTRADEBUG
           Serial.print("El estado del rele ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(digitalRead(Rele[i].pin));
         #endif
-      send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));
+      bool value;
+      if (Rele[i].pin != RESETPIN) value = digitalRead(Rele[i].pin);
+      else value = Rele[i].OFF;
+      send(relayMsg.set(value?Rele[i].ON:Rele[i].OFF));
     }
   }
 }
@@ -93,7 +96,7 @@ void process_relays()
       Serial.print("ESTADO RELE ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(releStatus(Rele[i]));
     #endif
 
-    if (Rele[i].MaxTime == 0 || !releStatus(Rele[i]) ) continue;
+    if (Rele[i].MaxTime == 0 || !releStatus(Rele[i])) continue;
 
     if (millis() > Rele[i].EndMillis) {
       #ifdef DEBUG
@@ -162,14 +165,19 @@ void receive(const MyMessage &message) {
       Serial.print(Rele[idx].desc);Serial.print(": PIN= ");Serial.println(Rele[idx].pin);
       Serial.print("BOOL= ");Serial.println(message.getBool());
     #endif
+    if (Rele[idx].pin == RESETPIN) {
+      bool value = message.getBool()?Rele[idx].ON:Rele[idx].OFF;
+      if (value) asm("jmp 0x0000");
+    }
+    else {
+      digitalWrite(Rele[idx].pin, message.getBool()?Rele[idx].ON:Rele[idx].OFF);
+      // Almacenar estado en la eeprom independientemente de initState (por si acaso)
+      saveState(idx, message.getBool());
 
-    digitalWrite(Rele[idx].pin, message.getBool()?Rele[idx].ON:Rele[idx].OFF);
-    // Almacenar estado en la eeprom independientemente de initState (por si acaso)
-    saveState(idx, message.getBool());
-
-    //Iniciamos el tiempo
-    if(Rele[idx].MaxTime != 0) {
-      Rele[idx].EndMillis = millis() + (unsigned long)Rele[idx].MaxTime * MAXTIMEFACTOR * 1000;
+      //Iniciamos el tiempo
+      if(Rele[idx].MaxTime != 0) {
+        Rele[idx].EndMillis = millis() + (unsigned long)Rele[idx].MaxTime * MAXTIMEFACTOR * 1000;
+      }
     }
     #ifdef DEBUG
      Serial.print("Cambio entrante para sensor:"); Serial.print(message.sensor); Serial.print(", Nuevo status: "); Serial.println(message.getBool());
