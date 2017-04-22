@@ -89,7 +89,7 @@ bool releStatus(sRELE Rele)
 void process_relays()
 {
   for (int i=0; i<NUMBER_OF_RELAYS;i++) {
-    #ifdef EXTRADEBUG
+    #ifdef VERBOSE
       Serial.print("ESTADO RELE ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(releStatus(Rele[i]));
     #endif
 
@@ -186,6 +186,7 @@ void receive(const MyMessage &message) {
     }
     return;
   #endif
+  //Procesamos cualquier otro mensaje si lo hay
   #ifdef EXTRADEBUG
     Serial.print("RECIBIDO MENSAJE NO CONTROLADO DE TIPO: ");Serial.println(message.type);
   #endif
@@ -214,7 +215,7 @@ void setup()
 {
   //Inicializamos el tiempo de pollin al valor builtin
   pollTime = POLL_TIME;
-  Presented = false;
+  //Presented = false;
   //Para los reles
    Serial.println("start call SETUP");
    initRelays(Rele,NUMBER_OF_RELAYS);

@@ -3,7 +3,7 @@
 #define globals_h
 #include <Arduino.h>
 
-bool Presented;
+bool Presented = false;
 long pollTime;
 int pingFailures;
 

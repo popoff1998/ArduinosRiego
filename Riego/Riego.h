@@ -102,7 +102,7 @@ struct sCOUNTER {
 #define KEEP    2
 
 //defines de comportamiento
-#define POLL_TIME 10000 //msec para chequear los sensores
+#define POLL_TIME 15000 //msec para chequear los sensores
 
 //ID de childs para conseguir informacion del controller
 #define CHILD_ID_POLL_TIME 64
@@ -127,11 +127,13 @@ struct sCOUNTER {
 #define NONE 0
 #define S_POLL_TIME 1
 #define S_MEMORY_FREE 2
+#define S_UPTIME 3
 
 //Opciones de depuracion
 //#define MY_DEBUG
 #define EXTRADEBUG
 #define DEBUG
+//#define VERBOSE
 //#define COUNTERDEBUG
 //#define COUNTEREXTRADEBUG
 //#define TRACE

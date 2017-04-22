@@ -24,7 +24,7 @@
 
 //Funciones Utilitarias
 
-  //Devuelve el elemento de la estructura de sensores a partir del id
+//Devuelve el elemento de la estructura de sensores a partir del id
 int getSensorIdxFromId(int id)
 {
   for(int i=0; i<NUMBER_OF_SENSORS;i++) {
@@ -33,6 +33,35 @@ int getSensorIdxFromId(int id)
   return NOTFOUND;
 }
 
+//Elapsed time a cadena
+char * elapsed2Str() {
+  char str[50];
+  sprintf(str,"%d:%d:%d - %d/%d/%d",hour(),minute(),second(),day()-1,month()-1,year()-1970);
+  return str;
+}
+
+void printDigits(byte digits){
+ // utility function for digital clock display: prints preceding colon and leading 0
+ Serial.print(":");
+ if(digits < 10)
+   Serial.print('0');
+ Serial.print(digits,DEC);
+}
+
+
+void digitalClockDisplay(){
+ // digital clock display of the time
+ Serial.print(hour(),DEC);
+ printDigits(minute());
+ printDigits(second());
+ Serial.print(" ");
+ Serial.print(day()-1,DEC);
+ Serial.print(" dia/ ");
+ Serial.print(month()-1,DEC);
+ Serial.print(" mes/ ");
+ Serial.print(year()-1970,DEC);
+ Serial.println(" año");
+}
 
 //Temperatura arduino
 #ifdef HAVE_ARDUINOTEMP
@@ -83,18 +112,32 @@ void process_sensor_INFO(sSENSOR _Sensor)
       send(_Sensor.msg->set(pollTime));
       break;
     case S_MEMORY_FREE:
-      int free_memory = freeMemory();
-      #ifdef DEBUG
-        Serial.print("---> ");Serial.print(_Sensor.desc); Serial.print(": ");Serial.println(free_memory);
+    {
+        int free_memory = freeMemory();
+        #ifdef DEBUG
+          Serial.print("---> ");Serial.print(_Sensor.desc); Serial.print(": ");Serial.println(free_memory);
+        #endif
+        send(_Sensor.msg->set(free_memory));
+        break;
+    }
+    case S_UPTIME:
+      //Presentamos el uptime
+      #ifdef VERBOSE
+        Serial.print("UPTIME: ");
+        digitalClockDisplay();
+        Serial.println(elapsed2Str());
       #endif
-      send(_Sensor.msg->set(free_memory));
+      send(_Sensor.msg->set(elapsed2Str()));
       break;
   }
 }
 
 void setup_sensor_INFO(sSENSOR _Sensor)
 {
-  if(_Sensor.HWsubtype == S_POLL_TIME) send(_Sensor.msg->set(POLL_TIME));
+  if(_Sensor.HWsubtype == S_POLL_TIME) {
+    pollTime = POLL_TIME;
+    send(_Sensor.msg->set(POLL_TIME));
+  }
 }
 
 void receive_sensor_INFO(MyMessage msg)
@@ -213,7 +256,7 @@ void receive_sensor_INFO(MyMessage msg)
     //los debemos pasar a 0-200 cb, pero lo dejo en 150
     sensorValue = constrain(sensorValue, MOISTURE_MINSENSOR, 1023);
     int hum = map(sensorValue, MOISTURE_MINSENSOR, 1023, 0, MOISTURE_MAXCB);
-    if(_Sensor.flags.poweronread) 
+    if(_Sensor.flags.poweronread)
     {
       delayMicroseconds(POWERDELAY);
       digitalWrite(_Sensor.auxPin, LOW);
@@ -319,4 +362,3 @@ void process_counter()
   sei();
 }
 #endif
-

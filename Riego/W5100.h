@@ -21,7 +21,7 @@
 //Variables de actuadores
 #define NUMBER_OF_RELAYS 9
 
-struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 3600, 0, true},
+struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                           {1, 22 , "RELE1-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {2, 24 , "RELE2-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {3, 26 , "RELE3-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
@@ -33,7 +33,7 @@ struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-EXT", HIGH, LOW, KEEP, 3600, 0,
                        };
 
 //Variables de los sensores
-int NUMBER_OF_SENSORS=10;
+int NUMBER_OF_SENSORS=11;
 
 struct sSENSOR Sensor [] = {  {10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-EXT", 0, ENABLED | POWERONREAD},
                               {11, A2, 33, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM2-EXT", 0, ENABLED | POWERONREAD},
@@ -43,13 +43,20 @@ struct sSENSOR Sensor [] = {  {10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHU
                               {18, A0, NONE, S_LIGHT_LEVEL, V_LEVEL, S_PHOTORESISTOR, NONE, "LUX1-EXT", 0, ENABLED},
                               {20, 5, NONE, S_HUM, V_HUM, DDHHTT, NONE, "AHUM-EXT", 0, ENABLED},
                               {21, 5, NONE, S_TEMP, V_TEMP, DDHHTT, NONE, "ATEMP-EXT", 0, ENABLED},
-                              {22, 0, NONE, S_INFO, V_TEXT, INFO, S_POLL_TIME, "POLLT-EXT", 0, ENABLED | REQUESTABLE},
-                              {23, 0, NONE, S_INFO, V_TEXT, INFO, S_MEMORY_FREE, "MFREE-EXT", 0, ENABLED}
+                              {22, 0, NONE, S_INFO, V_TEXT, INFO, S_POLL_TIME, "POLLT-EXT", 0, REQUESTABLE},
+                              {23, 0, NONE, S_INFO, V_TEXT, INFO, S_MEMORY_FREE, "MFREE-EXT", 0, ENABLED},
+                              {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-EXT", 0, ENABLED}
                            };
 
 
-//Includes especificos de la plataforma
-#include <Ethernet.h>
+ //Includes especificos de la plataforma
+ #include <SPI.h>
+ #include <Ethernet.h>
+ #include <ICMPPing.h>
+
+ IPAddress pingAddr(192,168,100,60);
+ SOCKET pingSocket = 0;
+ char buffer [256];
+ ICMPPing ping(pingSocket, (uint16_t)random(0, 255));
 
 #endif
-
