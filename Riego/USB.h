@@ -22,7 +22,7 @@ struct sRELE Rele [] = {  {0, LED_BUILTIN , "LED-INT", HIGH, LOW, KEEP, 0, 0, tr
                           {6, 26 , "RELE6-INT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {7, 24 , "RELE7-INT", LOW, HIGH, SETOFF, 3600, 0, true},
                           {8, 22 , "RELE8-INT", LOW, HIGH, SETOFF, 3600, 0, true},
-                          {9, 38 , "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true}
+                          {9, 38 , "RESET-INT", HIGH, LOW, SETOFF, 0, 0, true}
                        };
 
 //Variables de los sensores
