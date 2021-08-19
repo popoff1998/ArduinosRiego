@@ -1,9 +1,12 @@
 //Debemos procesar independientemente el de humedad y temperatura
 #include "platform.h"
-#include "Riego.h"
+#include "defines.h"
+#include <core/MySensorsCore.h>
+#include "types.h"
 #include "externs.h"
 
 #ifdef W5100GATEWAY
+  //#include "W5100.h"
   #include "W5100_Sensors.h"
 #endif
 
@@ -15,8 +18,11 @@
   #include "USB_Sensors.h"
 #endif
 
-#include <core/MySensorsCore.h>
+#include "Riego.h"
+
+
 #include "MemoryFree.h"
+#include <TimeLib.h>
 
 //Defines de parametros de sensores
 #define LDR_VCC 360
@@ -35,7 +41,7 @@ int getSensorIdxFromId(int id)
 
 //Elapsed time a cadena
 char * elapsed2Str() {
-  char str[50];
+  static char str[50];
   sprintf(str,"%d:%d:%d - %d/%d/%d",hour(),minute(),second(),day()-1,month()-1,year()-1970);
   return str;
 }

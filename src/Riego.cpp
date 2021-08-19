@@ -1,14 +1,19 @@
-#include "platform.h"
-#include "Riego.h"
-#include "globals.h"
+#define _MAIN_
+
+#include "platform.h" // Definicion del tipo (w5100 o usb), defines y cosas especificas
+#include "defines.h" //defines para todos los modulos
+#ifndef MYSENSORS_H
+#define MYSENSORS_H
+  #include <MySensors.h>
+#endif
+#include "types.h" // Mis tipos
+#include "globals.h" // Mis variables globales
 
 #ifdef W5100GATEWAY
-  #include "W5100.h"
   #include "W5100_Sensors.h"
 #endif
 
 #ifdef USBGATEWAY
-  #include "USB.h"
   #include "USB_Sensors.h"
 #endif
 
@@ -17,7 +22,9 @@
   #include "W5100TEST_Sensors.h"
 #endif
 
-#include <MySensors.h>
+#include "Riego.h"
+
+//#include <MySensors.h>
 
 int getRelayIdxFromId(int id)
 {
@@ -68,7 +75,7 @@ void presentRelays(const sRELE Rele[], int nRelays)
       // Registrar todos los reles al gw
       present(Rele[i].id, S_LIGHT,Rele[i].desc);
       // Le tenemos que mandar el estado que tiene.
-      MyMessage relayMsg(Rele[i].id,S_LIGHT);
+      MyMessage relayMsg(Rele[i].id,S_BINARY);
         #ifdef EXTRADEBUG
           Serial.print("El estado del rele ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(digitalRead(Rele[i].pin));
         #endif
@@ -215,8 +222,9 @@ void presentation()
   Serial.println("Finalizando presentacion");
   #ifdef MY_GATEWAY_W5100
     //Pingueamos una primera vez por si se cae la conexion para que reconecte antes del loop
-    ICMPEchoReply echoReply = ping(pingAddr, 4);
-  #endif
+    //ICMPEchoReply echoReply = ping(pingAddr, 4);
+  ping(pingAddr, 4);
+#endif
 }
 
 void setup()
@@ -259,7 +267,7 @@ void loop() {
 
   //Watchdog de conexion con Domoticz
   #ifdef MY_GATEWAY_W5100
-    ICMPEchoReply echoReply = ping(pingAddr, 4);
+    EthernetICMPEchoReply echoReply = ping(pingAddr, 4);
     if (echoReply.status == SUCCESS) {
       #ifdef EXTRADEBUG
         Serial.println("PING EXITOSO");
