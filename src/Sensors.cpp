@@ -216,6 +216,27 @@ void receive_sensor_INFO(MyMessage msg)
   }
 #endif
 
+#ifdef HAVE_PRESS_SENSOR
+  void setup_sensor_PRESS_SENSOR(sSENSOR _Sensor)
+  {
+  }
+
+  void process_sensor_PRESS_SENSOR(sSENSOR _Sensor)
+  {
+    int sensorValue =  analogRead(_Sensor.pin);
+    #ifdef DEBUG
+      Serial.print("Presion: ");Serial.println(sensorValue);
+    #endif
+    //Para el sensor de presion, el valor analogico ira de 0 a 1023
+    //El sensor de presion tiene una salida de 0.5V a 4.5V
+    //Correspondiendo a 0 y 30 PSI respectivamente
+    //Trasladamos el valor a PSI
+    float pressure = map(sensorValue, 0, 1023, 0, 30);
+    //No ha tenido en cuenta que el voltaje ira de 0.5 a 4.5V
+    send(_Sensor.msg->set(pressure,1));
+  }
+#endif
+
 #ifdef HAVE_PHOTORESISTOR
   void setup_sensor_PHOTORESISTOR(sSENSOR _Sensor)
   {

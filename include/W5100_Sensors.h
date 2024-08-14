@@ -7,6 +7,7 @@
 #define HAVE_INFO
 //#define HAVE_COUNTER
 #define HAVE_YL38
+#define HAVE_PRESS_SENSOR
 
 #endif
 
@@ -25,7 +26,7 @@ struct sRELE Rele[] = {{0, LED_BUILTIN, "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                        {9, 38, "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true}};
 
 //Variables de los sensores
-int NUMBER_OF_SENSORS = 11;
+int NUMBER_OF_SENSORS = 12;
 struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-EXT", 0, ENABLED | POWERONREAD},
                            {11, A2, 33, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM2-EXT", 0, ENABLED | POWERONREAD},
                            {12, A3, 35, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM3-EXT", 0, ENABLED | POWERONREAD},
@@ -36,5 +37,7 @@ struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-
                            {21, 5, NONE, S_TEMP, V_TEMP, DDHHTT, NONE, "ATEMP-EXT", 0, ENABLED},
                            {22, 0, NONE, S_INFO, V_TEXT, INFO, S_POLL_TIME, "POLLT-EXT", 0, REQUESTABLE},
                            {23, 0, NONE, S_INFO, V_TEXT, INFO, S_MEMORY_FREE, "MFREE-EXT", 0, ENABLED},
-                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-EXT", 0, ENABLED}};
+                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-EXT", 0, ENABLED},
+                           {25, A8, NONE, S_CUSTOM, V_PRESSURE, PRESS_SENSOR, NONE, "DEP_PRESS-EXT", 0, ENABLED | POWERONREAD}
+                           };
 #endif

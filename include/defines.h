@@ -37,6 +37,7 @@
 #define INFO 4
 #define S_ARDUINO_TEMP 5
 #define YL38 6
+#define PRESS_SENSOR 7
 
 //Defines de tios HWsubtype
 #define NONE 0

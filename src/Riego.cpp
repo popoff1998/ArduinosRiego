@@ -140,6 +140,11 @@ void initSensors(sSENSOR Sensor[], int nSensors)
             setup_sensor_INFO(Sensor[i]);
           } break;
         #endif
+        #ifdef HAVE_PRESS_SENSOR
+          case PRESS_SENSOR: {
+            setup_sensor_PRESS_SENSOR(Sensor[i]);
+          } break;  
+        #endif
       }
     }
   }

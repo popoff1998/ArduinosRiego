@@ -7,6 +7,7 @@
 #define HAVE_INFO
 #define HAVE_COUNTER
 #define HAVE_YL38
+#define HAVE_PRESS_SENSOR
 
 #endif
 
@@ -36,6 +37,6 @@ struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-
                            {21, 5, NONE, S_TEMP, V_TEMP, DDHHTT, NONE, "ATEMP-INT", 0, ENABLED},
                            {22, 0, NONE, S_INFO, V_TEXT, INFO, S_POLL_TIME, "POLLT-INT", 0, REQUESTABLE},
                            {23, 0, NONE, S_INFO, V_TEXT, INFO, S_MEMORY_FREE, "MFREE-INT", 0, ENABLED},
-                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-INT", 0, ENABLED}};
-
+                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-INT", 0, ENABLED}, 
+                           {25, A8, NONE, S_CUSTOM, V_PRESSURE, PRESS_SENSOR, NONE, "DEP_PRESS-EXT", 0, ENABLED | POWERONREAD}};
 #endif
