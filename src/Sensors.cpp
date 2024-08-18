@@ -229,10 +229,14 @@ void receive_sensor_INFO(MyMessage msg)
     #endif
     //Para el sensor de presion, el valor analogico ira de 0 a 1023
     //El sensor de presion tiene una salida de 0.5V a 4.5V
-    //Correspondiendo a 0 y 30 PSI respectivamente
-    //Trasladamos el valor a PSI
-    float pressure = map(sensorValue, 0, 1023, 0, 30);
-    //No ha tenido en cuenta que el voltaje ira de 0.5 a 4.5V
+    //Correspondiendo a 0 y 30 PSI respectivamente teoricamente
+    //Trasladamos el valor a PSI en base a las cantidades medidas
+    float pressure = (((5*(float)sensorValue)/1023)-0.5)*8.13;
+    //Imprimimos los valores
+    #ifdef DEBUG
+      Serial.print("Presion: ");Serial.println(pressure);
+    #endif   
+
     send(_Sensor.msg->set(pressure,1));
   }
 #endif
