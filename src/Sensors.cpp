@@ -219,6 +219,9 @@ void receive_sensor_INFO(MyMessage msg)
 #ifdef HAVE_PRESS_SENSOR
   void setup_sensor_PRESS_SENSOR(sSENSOR _Sensor)
   {
+    #ifdef DEBUG
+      Serial.println("Setup de PRESS SENSOR");
+    #endif
   }
 
   void process_sensor_PRESS_SENSOR(sSENSOR _Sensor)

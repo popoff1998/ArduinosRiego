@@ -342,6 +342,11 @@ void loop() {
             process_sensor_arduino_temp(Sensor[i]);
           #endif
           break;
+        case PRESS_SENSOR:
+          #ifdef HAVE_PRESS_SENSOR
+            process_sensor_PRESS_SENSOR(Sensor[i]);
+          #endif
+          break;
       }
     }
   }
