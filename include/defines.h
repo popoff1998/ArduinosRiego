@@ -1,6 +1,6 @@
 //Opciones de depuracion
 //#define MY_DEBUG
-#define EXTRADEBUG
+//#define EXTRADEBUG
 #define DEBUG
 //#define VERBOSE
 //#define COUNTERDEBUG
