@@ -228,16 +228,17 @@ void receive_sensor_INFO(MyMessage msg)
   {
     int sensorValue =  analogRead(_Sensor.pin);
     #ifdef DEBUG
-      Serial.print("Presion: ");Serial.println(sensorValue);
+      Serial.print("Lectura sensor (0-1023): ");Serial.println(sensorValue);
     #endif
     //Para el sensor de presion, el valor analogico ira de 0 a 1023
     //El sensor de presion tiene una salida de 0.5V a 4.5V
     //Correspondiendo a 0 y 30 PSI respectivamente teoricamente
     //Trasladamos el valor a PSI en base a las cantidades medidas
-    float pressure = (((5*(float)sensorValue)/1023)-0.5)*8.13;
+    float pressure = (((5*(float)sensorValue)/1023)-0.5)*8;
+    //float pressure = (((5*(float)sensorValue)/1023)-0.5)*8.13;
     //Imprimimos los valores
     #ifdef DEBUG
-      Serial.print("Presion: ");Serial.println(pressure);
+      Serial.print("Presion (psi): ");Serial.println(pressure);
     #endif   
 
     send(_Sensor.msg->set(pressure,1));
