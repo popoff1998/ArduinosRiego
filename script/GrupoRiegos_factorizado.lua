@@ -2,11 +2,10 @@
 -- Es importante que en la variable se use EXACTAMENTE el texto tal cual se pone aquí.
 -- Ver las tablas de abajo para ver los circuitos de riego activados para cada modo
 
-
-
 -- Para pruebas pongo a false abreGeneral:
 -- abreGeneral = false
 abreGeneral = true
+-- Almacenará el tiempo total de riego de CESPED y GOTEOS factorizado (en cada ejecución del script)
 tiempoCespedFactorizado = 0
 tiempoGoteosFactorizado = 0
 
@@ -15,7 +14,6 @@ tiempoGoteosFactorizado = 0
 local function RiegaHuerto(domoticz,tRiego)
     domoticz.devices('EV-GOTEOOLIVO').switchOn().afterMin(0).forMin(tRiego)
 end
-        
 local function TerminaHuerto(domoticz)
     domoticz.devices('EV-GOTEOOLIVO').switchOff()
 end
@@ -27,12 +25,12 @@ local function RiegaCesped(domoticz,delay,tRiego)
         local device = domoticz.devices(currentDevice)
         local factor = tonumber(device.description) or 100
         local tiempoRiego = (tRiego * factor)/100
-        domoticz.log('Riego ' .. currentDevice .. ' con factor ' .. factor .. ' y tiempo ' .. tiempoRiego .. ' minutos', domoticz.LOG_DEBUG)
+        domoticz.log('Riego ' .. currentDevice .. ' con factor ' .. factor .. ' y tiempo ' .. tiempoRiego .. ' minutos', domoticz.LOG_INFO)
         device.switchOn().afterMin(delay).forMin(tiempoRiego)
         delay  =  delay + tiempoRiego
         tiempoGrupo = delay - delayInicial
     end
-    domoticz.log('tiempo grupo CESPED: ' .. tiempoGrupo .. ' minutos', domoticz.LOG_DEBUG)
+    domoticz.log('tiempo grupo CESPED: ' .. tiempoGrupo .. ' minutos', domoticz.LOG_INFO)
     tiempoCespedFactorizado = tiempoGrupo
     -- Se guarda el tiempo total de riego de CESPED factorizado en domoticz.data para usarlo en otros scripts
     -- domoticz.data.tiempoCespedFactorizado = tiempoCespedFactorizado
@@ -44,6 +42,7 @@ local function TerminaCesped(domoticz)
     end
 end
 
+-- Riego de GOTEOS factorizado por valor en la descripcion del dispositivo
 local function RiegaGoteos(domoticz,delay,tRiego,tPatio)
     local delayInicial = delay
     for key,currentDevice in pairs(tablaGOTEOS) do
@@ -55,12 +54,12 @@ local function RiegaGoteos(domoticz,delay,tRiego,tPatio)
         local device = domoticz.devices(currentDevice)
         local factor = tonumber(device.description) or 100
         local tiempoRiego = (_tRiego * factor)/100
-        domoticz.log('Riego ' .. currentDevice .. ' con factor ' .. factor .. ' y tiempo ' .. tiempoRiego .. ' minutos', domoticz.LOG_DEBUG)
+        domoticz.log('Riego ' .. currentDevice .. ' con factor ' .. factor .. ' y tiempo ' .. tiempoRiego .. ' minutos', domoticz.LOG_INFO)
         device.switchOn().afterMin(delay).forMin(tiempoRiego)
         delay  =  delay + tiempoRiego
         tiempoGrupo = delay - delayInicial
     end
-    domoticz.log('tiempo grupo GOTEOS: ' .. tiempoGrupo .. ' minutos', domoticz.LOG_DEBUG)
+    domoticz.log('tiempo grupo GOTEOS: ' .. tiempoGrupo .. ' minutos', domoticz.LOG_INFO)
     tiempoGoteosFactorizado = tiempoGrupo
 end
 
@@ -70,7 +69,6 @@ local function TerminaGoteos(domoticz)
     end
 end
 
-
 local function AbreGeneral(domoticz,tiempo)
     if(abreGeneral) then
         domoticz.devices('EV-GENERAL').switchOn().forMin(tiempo)
@@ -79,23 +77,24 @@ local function AbreGeneral(domoticz,tiempo)
     end
 end
 
+
 -- Programa principal
 return {
     active = true,
 	on = {
-		devices = {
-		    'COMPLETO',
+        devices = {
+            'COMPLETO',
 			'CESPED',
 			'GOTEOS',
 			'HUERTO'
 		}
 	},
 	logging = {
-	    level = domoticz.LOG_DEBUG,
+        level = domoticz.LOG_DEBUG,
 	    marker = "MYDEBUG"
 	},
 	data = {
-	    -- semaforo controlara si se esta regando en un riego de grupo
+        -- semaforo controlara si se esta regando en un riego de grupo
 	    semaforo = { initial = false },
 	    -- offInterno conrolara si ha sido el propio script quien ha apagado el boton
 	    offInterno = { initial = false },
@@ -103,6 +102,8 @@ return {
         contadorInicial = { initial = 0 },
         -- Tabla de estados de los botones
         estado = { initial = {['COMPLETO'] = false, ['CESPED'] = false, ['GOTEOS'] = false, ['HUERTO'] = false }}
+        
+                
 	},
 	execute = function(domoticz,boton)
 	    
@@ -125,25 +126,12 @@ return {
             tablaGOTEOS = {'EV-GOTEOALTO' , 'EV-GOTEOBAJO' ,'EV-ROCALLA' , 'EV-PATIO'}
         end
 
-        -- Leemos los valores de los tiempos salvo tPatio que leeremos despues si existe
+        -- Leemos los valores de los tiempos
         local tCesped = domoticz.variables('TIEMPO-CESPED').value
 		local tGoteos = domoticz.variables('TIEMPO-GOTEOS').value
 		local tHuerto = domoticz.variables('TIEMPO-HUERTO').value
-		local tPatio = 0
+		local tPatio  = domoticz.variables('TIEMPO-PATIO').value
 		
-		-- Contamos el numero de riegos
-		local nriegosCESPED = 0
-		local nriegosGOTEOS = 0
-
-		for _ in pairs(tablaCESPED) do nriegosCESPED = nriegosCESPED + 1 end
-		for k,v in pairs(tablaGOTEOS) do 
-			if (v == 'EV-PATIO') then
-		        tPatio = domoticz.variables('TIEMPO-PATIO').value
-			else
-				nriegosGOTEOS = nriegosGOTEOS + 1 
-			end
-		end
-
         -- EL BOTON SE ENCIENDE
         -- Antes que nada deshabilitamos los dobles clicks de botones de grupos
 	    if(boton.state == 'On' and domoticz.data.semaforo) then
