@@ -1,4 +1,32 @@
 /*
+ *  Icmp.cpp: Library to send/receive ICMP packets with the Arduino ethernet shield.
+ *  This version only offers minimal wrapping of socket.cpp
+ *  Drop Icmp.h/.cpp into the Ethernet library directory at hardware/libraries/Ethernet/
+ *
+ * MIT License:
+ * Copyright (c) 2008 Bjoern Hartmann
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * bjoern@cs.stanford.edu 12/30/2008
+ */
+
+/*
  * Copyright (c) 2010 by Blake Foster <blfoster@vassar.edu>
  *
  * This file is free software; you can redistribute it and/or modify
@@ -7,8 +35,11 @@
  * published by the Free Software Foundation.
  */
 
-#include "ICMPPing.h"
-#include <util.h>
+
+#include <Arduino.h>
+//#include "Ethernet.h"
+//#include "utility/w5100.h"
+#include "EthernetICMP.h"
 
 #ifdef ICMPPING_INSERT_YIELDS
 #define ICMPPING_DOYIELD()		delay(2)
@@ -16,6 +47,102 @@
 #define ICMPPING_DOYIELD()
 #endif
 
+typedef struct {
+	uint16_t RX_RSR; // Number of bytes received
+	uint16_t RX_RD;  // Address to read
+	uint16_t TX_FSR; // Free space ready for transmit
+	uint8_t  RX_inc; // how much have we advanced RX_RD
+} socketstate_t;
+
+static socketstate_t state[MAX_SOCK_NUM];
+
+static uint16_t getSnTX_FSR(uint8_t s);
+static uint16_t getSnRX_RSR(uint8_t s);
+static void write_data(uint8_t s, uint16_t offset, const uint8_t *data, uint16_t len);
+static void read_data(uint8_t s, uint16_t src, uint8_t *dst, uint16_t len);
+
+/*****************************************/
+/*    Socket Data Transmit Functions     */
+/*****************************************/
+
+static uint16_t getSnTX_FSR(uint8_t s)
+{
+        uint16_t val, prev;
+
+        prev = W5100.readSnTX_FSR(s);
+        while (1) {
+                val = W5100.readSnTX_FSR(s);
+                if (val == prev) {
+			state[s].TX_FSR = val;
+			return val;
+		}
+                prev = val;
+        }
+}
+
+
+static void write_data(uint8_t s, uint16_t data_offset, const uint8_t *data, uint16_t len)
+{
+	uint16_t ptr = W5100.readSnTX_WR(s);
+	ptr += data_offset;
+	uint16_t offset = ptr & W5100.SMASK;
+	uint16_t dstAddr = offset + W5100.SBASE(s);
+
+	if (W5100.hasOffsetAddressMapping() || offset + len <= W5100.SSIZE) {
+		W5100.write(dstAddr, data, len);
+	} else {
+		// Wrap around circular buffer
+		uint16_t size = W5100.SSIZE - offset;
+		W5100.write(dstAddr, data, size);
+		W5100.write(W5100.SBASE(s), data + size, len - size);
+	}
+	ptr += len;
+	W5100.writeSnTX_WR(s, ptr);
+}
+
+/*****************************************/
+/*    Socket Data Receive Functions      */
+/*****************************************/
+
+static uint16_t getSnRX_RSR(uint8_t s)
+{
+#if 1
+        uint16_t val, prev;
+
+        prev = W5100.readSnRX_RSR(s);
+        while (1) {
+                val = W5100.readSnRX_RSR(s);
+                if (val == prev) {
+			return val;
+		}
+                prev = val;
+        }
+#else
+	uint16_t val = W5100.readSnRX_RSR(s);
+	return val;
+#endif
+}
+
+
+static void read_data(uint8_t s, uint16_t src, uint8_t *dst, uint16_t len)
+{
+	uint16_t size;
+	uint16_t src_mask;
+	uint16_t src_ptr;
+
+	//Serial.printf("read_data, len=%d, at:%d\n", len, src);
+	src_mask = (uint16_t)src & W5100.SMASK;
+	src_ptr = W5100.RBASE(s) + src_mask;
+
+	if (W5100.hasOffsetAddressMapping() || src_mask + len <= W5100.SSIZE) {
+		W5100.read(src_ptr, dst, len);
+	} else {
+		size = W5100.SSIZE - src_mask;
+		W5100.read(src_ptr, dst, size);
+		dst += size;
+		W5100.read(W5100.RBASE(s), dst, len - size);
+	}
+}
 
 inline uint16_t _makeUint16(const uint8_t& highOrder, const uint8_t& lowOrder)
 {
@@ -25,7 +152,7 @@ inline uint16_t _makeUint16(const uint8_t& highOrder, const uint8_t& lowOrder)
     return *(uint16_t *)&value;
 }
 
-uint16_t _checksum(const ICMPEcho& echo)
+uint16_t _checksum(const EthernetICMPEcho& echo)
 {
     // calculate the checksum of an ICMPEcho with all fields but icmpHeader.checksum populated
     unsigned long sum = 0;
@@ -52,7 +179,7 @@ uint16_t _checksum(const ICMPEcho& echo)
     return ~sum;
 }
 
-ICMPEcho::ICMPEcho(uint8_t type, uint16_t _id, uint16_t _seq, uint8_t * _payload)
+EthernetICMPEcho::EthernetICMPEcho(uint8_t type, uint16_t _id, uint16_t _seq, uint8_t * _payload)
 : seq(_seq), id(_id), time(millis())
 {
     memcpy(payload, _payload, REQ_DATASIZE);
@@ -61,7 +188,7 @@ ICMPEcho::ICMPEcho(uint8_t type, uint16_t _id, uint16_t _seq, uint8_t * _payload
     icmpHeader.checksum = _checksum(*this);
 }
 
-ICMPEcho::ICMPEcho()
+EthernetICMPEcho::EthernetICMPEcho()
 : seq(0), id(0), time(0)
 {
     memset(payload, 0, sizeof(payload));
@@ -70,7 +197,7 @@ ICMPEcho::ICMPEcho()
     icmpHeader.checksum = 0;
 }
 
-void ICMPEcho::serialize(uint8_t * binData) const
+void EthernetICMPEcho::serialize(uint8_t * binData) const
 {
     *(binData++) = icmpHeader.type;
     *(binData++) = icmpHeader.code;
@@ -83,7 +210,7 @@ void ICMPEcho::serialize(uint8_t * binData) const
     memcpy(binData, payload, sizeof(payload));
 }
 
-void ICMPEcho::deserialize(uint8_t const * binData)
+void EthernetICMPEcho::deserialize(uint8_t const * binData)
 {
     icmpHeader.type = *(binData++);
     icmpHeader.code = *(binData++);
@@ -101,9 +228,9 @@ void ICMPEcho::deserialize(uint8_t const * binData)
 }
 
 
-uint16_t ICMPPing::ping_timeout = PING_TIMEOUT;
+uint16_t EthernetICMPPing::ping_timeout = PING_TIMEOUT;
 
-ICMPPing::ICMPPing(SOCKET socket, uint8_t id) :
+EthernetICMPPing::EthernetICMPPing(SOCKET socket, uint8_t id) :
 #ifdef ICMPPING_ASYNCH_ENABLE
   _curSeq(0), _numRetries(0), _asyncstart(0), _asyncstatus(BAD_RESPONSE),
 #endif
@@ -113,15 +240,15 @@ ICMPPing::ICMPPing(SOCKET socket, uint8_t id) :
 }
 
 
-void ICMPPing::setPayload(uint8_t * payload)
+void EthernetICMPPing::setPayload(uint8_t * payload)
 {
 	memcpy(_payload, payload, REQ_DATASIZE);
 }
 
-void ICMPPing::openSocket()
+void EthernetICMPPing::openSocket()
 {
 
-	W5100.execCmdSn(_socket, Sock_CLOSE);
+    W5100.execCmdSn(_socket, Sock_CLOSE);
     W5100.writeSnIR(_socket, 0xFF);
     W5100.writeSnMR(_socket, SnMR::IPRAW);
     W5100.writeSnPROTO(_socket, IPPROTO::ICMP);
@@ -129,13 +256,18 @@ void ICMPPing::openSocket()
     W5100.execCmdSn(_socket, Sock_OPEN);
 }
 
+void EthernetICMPPing::closeSocket()
+{
+    W5100.execCmdSn(_socket, Sock_CLOSE);
+    W5100.writeSnIR(_socket, 0xFF);
+}
 
 
-void ICMPPing::operator()(const IPAddress& addr, int nRetries, ICMPEchoReply& result)
+void EthernetICMPPing::operator()(const IPAddress& addr, int nRetries, EthernetICMPEchoReply& result)
 {
 	openSocket();
 
-    ICMPEcho echoReq(ICMP_ECHOREQ, _id, _nextSeq++, _payload);
+    EthernetICMPEcho echoReq(ICMP_ECHOREQ, _id, _nextSeq++, _payload);
 
     for (_attempt=0; _attempt<nRetries; ++_attempt)
     {
@@ -159,52 +291,20 @@ void ICMPPing::operator()(const IPAddress& addr, int nRetries, ICMPEchoReply& re
     W5100.writeSnIR(_socket, 0xFF);
 }
 
-ICMPEchoReply ICMPPing::operator()(const IPAddress& addr, int nRetries)
+EthernetICMPEchoReply EthernetICMPPing::operator()(const IPAddress& addr, int nRetries)
 {
-    ICMPEchoReply reply;
+    EthernetICMPEchoReply reply;
     operator()(addr, nRetries, reply);
     return reply;
 }
 
-Status ICMPPing::sendEchoRequest(const IPAddress& addr, const ICMPEcho& echoReq)
-{
-    // I wish there were a better way of doing this, but if we use the uint32_t
-    // cast operator, we're forced to (1) cast away the constness, and (2) deal
-    // with an endianness nightmare.
-    uint8_t addri [] = {addr[0], addr[1], addr[2], addr[3]};
-    W5100.writeSnDIPR(_socket, addri);
-    W5100.writeSnTTL(_socket, 128);
-    // The port isn't used, becuause ICMP is a network-layer protocol. So we
-    // write zero. This probably isn't actually necessary.
-    W5100.writeSnDPORT(_socket, 0);
-
-    uint8_t serialized [sizeof(ICMPEcho)];
-    echoReq.serialize(serialized);
-
-    W5100.send_data_processing(_socket, serialized, sizeof(ICMPEcho));
-    W5100.execCmdSn(_socket, Sock_SEND);
-
-    while ((W5100.readSnIR(_socket) & SnIR::SEND_OK) != SnIR::SEND_OK) 
-    {
-        if (W5100.readSnIR(_socket) & SnIR::TIMEOUT)
-        {
-            W5100.writeSnIR(_socket, (SnIR::SEND_OK | SnIR::TIMEOUT));
-            return SEND_TIMEOUT;
-        }
-
-        ICMPPING_DOYIELD();
-    }
-    W5100.writeSnIR(_socket, SnIR::SEND_OK);
-    return SUCCESS;
-}
-
-void ICMPPing::receiveEchoReply(const ICMPEcho& echoReq, const IPAddress& addr, ICMPEchoReply& echoReply)
+void EthernetICMPPing::receiveEchoReply(const EthernetICMPEcho& echoReq, const IPAddress& addr, EthernetICMPEchoReply& echoReply)
 {
     icmp_time_t start = millis();
     while (millis() - start < ping_timeout)
     {
 
-        if (W5100.getRXReceivedSize(_socket) < 1)
+        if (getSnRX_RSR(_socket) < 1)
         {
         	// take a break, maybe let platform do
         	// some background work (like on ESP8266)
@@ -216,17 +316,17 @@ void ICMPPing::receiveEchoReply(const ICMPEcho& echoReq, const IPAddress& addr, 
 
         uint8_t ipHeader[6];
 		uint8_t buffer = W5100.readSnRX_RD(_socket);
-		W5100.read_data(_socket, (uint16_t) buffer, ipHeader, sizeof(ipHeader));
+		read_data(_socket, (uint16_t) buffer, ipHeader, sizeof(ipHeader));
 		buffer += sizeof(ipHeader);
 		for (int i = 0; i < 4; ++i)
 			echoReply.addr[i] = ipHeader[i];
 		uint8_t dataLen = ipHeader[4];
 		dataLen = (dataLen << 8) + ipHeader[5];
 
-		uint8_t serialized[sizeof(ICMPEcho)];
-		if (dataLen > sizeof(ICMPEcho))
-			dataLen = sizeof(ICMPEcho);
-		W5100.read_data(_socket, (uint16_t) buffer, serialized, dataLen);
+		uint8_t serialized[sizeof(EthernetICMPEcho)];
+		if (dataLen > sizeof(EthernetICMPEcho))
+			dataLen = sizeof(EthernetICMPEcho);
+		read_data(_socket, (uint16_t) buffer, serialized, dataLen);
 		echoReply.data.deserialize(serialized);
 
 		buffer += dataLen;
@@ -273,16 +373,47 @@ void ICMPPing::receiveEchoReply(const ICMPEcho& echoReq, const IPAddress& addr, 
     echoReply.status = NO_RESPONSE;
 }
 
+Status EthernetICMPPing::sendEchoRequest(const IPAddress& addr, const EthernetICMPEcho& echoReq)
+{
+    // I wish there were a better way of doing this, but if we use the uint32_t
+    // cast operator, we're forced to (1) cast away the constness, and (2) deal
+    // with an endianness nightmare.
+    uint8_t addri [] = {addr[0], addr[1], addr[2], addr[3]};
+    W5100.writeSnDIPR(_socket, addri);
+    W5100.writeSnTTL(_socket, 255);
+    // The port isn't used, becuause ICMP is a network-layer protocol. So we
+    // write zero. This probably isn't actually necessary.
+    W5100.writeSnDPORT(_socket, 0);
 
+    uint8_t serialized [sizeof(EthernetICMPEcho)];
+    echoReq.serialize(serialized);
+
+    //W5100.send_data_processing(_socket, serialized, sizeof(EthernetICMPEcho));
+    write_data(_socket, 0, serialized, sizeof(EthernetICMPEcho));
+    W5100.execCmdSn(_socket, Sock_SEND);
+
+    while ((W5100.readSnIR(_socket) & SnIR::SEND_OK) != SnIR::SEND_OK) 
+    {
+        if (W5100.readSnIR(_socket) & SnIR::TIMEOUT)
+        {
+            W5100.writeSnIR(_socket, (SnIR::SEND_OK | SnIR::TIMEOUT));
+            return SEND_TIMEOUT;
+        }
+
+        ICMPPING_DOYIELD();
+    }
+    W5100.writeSnIR(_socket, SnIR::SEND_OK);
+    return SUCCESS;
+}
 
 #ifdef ICMPPING_ASYNCH_ENABLE
 /*
  * When ICMPPING_ASYNCH_ENABLE is defined, we have access to the
  * asyncStart()/asyncComplete() methods from the API.
  */
-bool ICMPPing::asyncSend(ICMPEchoReply& result)
+bool EthernetICMPPing::asyncSend(EthernetICMPEchoReply& result)
 {
-    ICMPEcho echoReq(ICMP_ECHOREQ, _id, _curSeq, _payload);
+    EthernetICMPEcho echoReq(ICMP_ECHOREQ, _id, _curSeq, _payload);
 
     Status sendOpResult(NO_RESPONSE);
     bool sendSuccess = false;
@@ -305,7 +436,7 @@ bool ICMPPing::asyncSend(ICMPEchoReply& result)
     result.status = _asyncstatus; // set the result, in case the ICMPEchoReply is checked
     return sendSuccess; // return success of send op
 }
-bool ICMPPing::asyncStart(const IPAddress& addr, int nRetries, ICMPEchoReply& result)
+bool EthernetICMPPing::asyncStart(const IPAddress& addr, int nRetries, EthernetICMPEchoReply& result)
 {
 	openSocket();
 
@@ -320,7 +451,7 @@ bool ICMPPing::asyncStart(const IPAddress& addr, int nRetries, ICMPEchoReply& re
 
 }
 
-bool ICMPPing::asyncComplete(ICMPEchoReply& result)
+bool EthernetICMPPing::asyncComplete(EthernetICMPEchoReply& result)
 {
 
 	if (_asyncstatus != ASYNC_SENT)
@@ -330,16 +461,24 @@ bool ICMPPing::asyncComplete(ICMPEchoReply& result)
 		//	- failed to send; or
 		//	- are no longer waiting on this packet.
 		// either way, we're done
+
+		// Close RAW socket to allow device being pinged again
+		closeSocket();
+
 		return true;
 	}
 
 
-	if (W5100.getRXReceivedSize(_socket))
+	if (W5100.readSnRX_SIZE(_socket))
 	{
 		// ooooh, we've got a pending reply
-	    ICMPEcho echoReq(ICMP_ECHOREQ, _id, _curSeq, _payload);
+	    EthernetICMPEcho echoReq(ICMP_ECHOREQ, _id, _curSeq, _payload);
 		receiveEchoReply(echoReq, _addr, result);
 		_asyncstatus = result.status; // make note of this status, whatever it is.
+
+		// Close RAW socket to allow device being pinged again
+		closeSocket();
+
 		return true; // whatever the result of the receiveEchoReply(), the async op is done.
 	}
 
@@ -360,6 +499,10 @@ bool ICMPPing::asyncComplete(ICMPEchoReply& result)
 
 			// this send has failed. too bad,
 			// we are done.
+
+			// Close RAW socket to allow device being pinged again
+			closeSocket();
+
 			return true;
 		}
 
@@ -367,6 +510,10 @@ bool ICMPPing::asyncComplete(ICMPEchoReply& result)
 		// hello?  is anybody out there?
 		// guess not:
 	    result.status = NO_RESPONSE;
+
+	    // Close RAW socket to allow device being pinged again
+	    closeSocket();
+
 	    return true;
 	}
 
@@ -376,6 +523,3 @@ bool ICMPPing::asyncComplete(ICMPEchoReply& result)
 }
 
 #endif	/* ICMPPING_ASYNCH_ENABLE */
-
-
-

@@ -1,9 +1,12 @@
 //Debemos procesar independientemente el de humedad y temperatura
 #include "platform.h"
-#include "Riego.h"
+#include "defines.h"
+#include <core/MySensorsCore.h>
+#include "types.h"
 #include "externs.h"
 
 #ifdef W5100GATEWAY
+  //#include "W5100.h"
   #include "W5100_Sensors.h"
 #endif
 
@@ -15,8 +18,11 @@
   #include "USB_Sensors.h"
 #endif
 
-#include <core/MySensorsCore.h>
+#include "Riego.h"
+
+
 #include "MemoryFree.h"
+#include <TimeLib.h>
 
 //Defines de parametros de sensores
 #define LDR_VCC 360
@@ -35,7 +41,7 @@ int getSensorIdxFromId(int id)
 
 //Elapsed time a cadena
 char * elapsed2Str() {
-  char str[50];
+  static char str[50];
   sprintf(str,"%d:%d:%d - %d/%d/%d",hour(),minute(),second(),day()-1,month()-1,year()-1970);
   return str;
 }
@@ -207,6 +213,35 @@ void receive_sensor_INFO(MyMessage msg)
       Serial.print("Temperatura Dallas: ");Serial.print(temperatura);Serial.println(" grados");
     #endif
     send(_Sensor.msg->set(temperatura,1));
+  }
+#endif
+
+#ifdef HAVE_PRESS_SENSOR
+  void setup_sensor_PRESS_SENSOR(sSENSOR _Sensor)
+  {
+    #ifdef DEBUG
+      Serial.println("Setup de PRESS SENSOR");
+    #endif
+  }
+
+  void process_sensor_PRESS_SENSOR(sSENSOR _Sensor)
+  {
+    int sensorValue =  analogRead(_Sensor.pin);
+    #ifdef DEBUG
+      Serial.print("Lectura sensor (0-1023): ");Serial.println(sensorValue);
+    #endif
+    //Para el sensor de presion, el valor analogico ira de 0 a 1023
+    //El sensor de presion tiene una salida de 0.5V a 4.5V
+    //Correspondiendo a 0 y 30 PSI respectivamente teoricamente
+    //Trasladamos el valor a PSI en base a las cantidades medidas
+    float pressure = (((5*(float)sensorValue)/1023)-0.5)*8;
+    //float pressure = (((5*(float)sensorValue)/1023)-0.5)*8.13;
+    //Imprimimos los valores
+    #ifdef DEBUG
+      Serial.print("Presion (psi): ");Serial.println(pressure);
+    #endif   
+
+    send(_Sensor.msg->set(pressure,1));
   }
 #endif
 

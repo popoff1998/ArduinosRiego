@@ -1,4 +1,39 @@
 /*
+ *  Icmp.cpp: Library to send/receive ICMP packets with the Arduino ethernet shield.
+ *  This version only offers minimal wrapping of socket.cpp
+ *
+ * MIT License:
+ * Copyright (c) 2008 Bjoern Hartmann
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * bjoern@cs.stanford.edu 12/30/2008
+ */
+
+#ifndef EthernetICMP_h
+#define EthernetICMP_h
+
+#include <Ethernet.h>
+#include "utility/w5100.h"
+
+
+
+/*
  * Copyright (c) 2010 by Blake Foster <blfoster@vassar.edu>
  *
  * This file is free software; you can redistribute it and/or modify
@@ -7,9 +42,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <SPI.h>
-#include <Ethernet.h>
-#include <utility/w5100.h>
 
 #define REQ_DATASIZE 64
 #define ICMP_ECHOREPLY 0
@@ -32,8 +64,8 @@
 
 typedef unsigned long icmp_time_t;
 
-class ICMPHeader;
-class ICMPPing;
+class EthernetICMPHeader;
+class EthernetICMPPing;
 
 typedef enum Status
 {
@@ -50,7 +82,7 @@ typedef enum Status
 } Status;
 
 
-struct ICMPHeader
+struct EthernetICMPHeader
 {
     /*
     Header for an ICMP packet. Does not include the IP header.
@@ -61,7 +93,7 @@ struct ICMPHeader
 };
 
 
-struct ICMPEcho
+struct EthernetICMPEcho
 {
     /*
     Contents of an ICMP echo packet, including the ICMP header. Does not
@@ -78,16 +110,16 @@ struct ICMPEcho
     @param payload: An arbitrary chunk of data that we expect to get back in
     the response.
     */
-    ICMPEcho(uint8_t type, uint16_t _id, uint16_t _seq, uint8_t * _payload);
+    EthernetICMPEcho(uint8_t type, uint16_t _id, uint16_t _seq, uint8_t * _payload);
 
     /*
     This constructor leaves everything zero. This is used when we receive a
     response, since we nuke whatever is here already when we copy the packet
     data out of the W5100.
     */
-    ICMPEcho();
+    EthernetICMPEcho();
 
-    ICMPHeader icmpHeader;
+    EthernetICMPHeader icmpHeader;
     uint16_t id;
     uint16_t seq;
     icmp_time_t time;
@@ -104,7 +136,7 @@ struct ICMPEcho
 };
 
 
-struct ICMPEchoReply
+struct EthernetICMPEchoReply
 {
     /*
     Struct returned by ICMPPing().
@@ -115,14 +147,14 @@ struct ICMPEchoReply
     @param addr: The ip address that we received the response from. Something
     is borked if this doesn't match the IP address we pinged.
     */
-    ICMPEcho data;
+    EthernetICMPEcho data;
     uint8_t ttl;
     Status status;
     IPAddress addr;
 };
 
 
-class ICMPPing
+class EthernetICMPPing
 {
     /*
     Function-object for sending ICMP ping requests.
@@ -135,7 +167,7 @@ public:
     @param id: The id to put in the ping packets. Can be pretty much any
     arbitrary number.
     */
-    ICMPPing(SOCKET s, uint8_t id);
+    EthernetICMPPing(SOCKET s, uint8_t id);
 
 
     /*
@@ -162,7 +194,7 @@ public:
     failed. If the request failed, the status indicates the reason for
     failure on the last retry.
     */
-    ICMPEchoReply operator()(const IPAddress&, int nRetries);
+    EthernetICMPEchoReply operator()(const IPAddress&, int nRetries);
 
     /*
     This overloaded version of the () operator takes a (hopefully blank)
@@ -173,7 +205,7 @@ public:
     @param nRetries: Number of times to rety before giving up.
     @param result: ICMPEchoReply that will hold the result.
     */
-    void operator()(const IPAddress& addr, int nRetries, ICMPEchoReply& result);
+    void operator()(const IPAddress& addr, int nRetries, EthernetICMPEchoReply& result);
 
 
 
@@ -202,8 +234,8 @@ public:
        // say we're in some function, to simplify things...
        IPAddress pingAddr(74,125,26,147); // ip address to ping
 
-       ICMPPing ping(0, (uint16_t)random(0, 255));
-       ICMPEchoReply theResult;
+       EthernetICMPPing ping(0, (uint16_t)random(0, 255));
+       EthernetICMPEchoReply theResult;
 
        if (! asyncStart(pingAddr, 3, theResult))
        {
@@ -249,7 +281,7 @@ public:
      @return: true on async request sent, false otherwise.
      @author: Pat Deegan, http://psychogenic.com
     */
-    bool asyncStart(const IPAddress& addr, int nRetries, ICMPEchoReply& result);
+    bool asyncStart(const IPAddress& addr, int nRetries, EthernetICMPEchoReply& result);
 
 
     /*
@@ -262,7 +294,7 @@ public:
               false if we're still waiting for it to complete.
      @author: Pat Deegan, http://psychogenic.com
     */
-    bool asyncComplete(ICMPEchoReply& result);
+    bool asyncComplete(EthernetICMPEchoReply& result);
 #endif
 
 private:
@@ -271,16 +303,17 @@ private:
     static uint16_t ping_timeout;
 
     void openSocket();
+    void closeSocket();
 
-    Status sendEchoRequest(const IPAddress& addr, const ICMPEcho& echoReq);
-    void receiveEchoReply(const ICMPEcho& echoReq, const IPAddress& addr, ICMPEchoReply& echoReply);
+    Status sendEchoRequest(const IPAddress& addr, const EthernetICMPEcho& echoReq);
+    void receiveEchoReply(const EthernetICMPEcho& echoReq, const IPAddress& addr, EthernetICMPEchoReply& echoReply);
 
 
 
 #ifdef ICMPPING_ASYNCH_ENABLE
     // extra internal state/methods used when asynchronous pings
     // are enabled.
-    bool asyncSend(ICMPEchoReply& result);
+    bool asyncSend(EthernetICMPEchoReply& result);
     uint8_t _curSeq;
     uint8_t _numRetries;
     icmp_time_t _asyncstart;
@@ -296,3 +329,5 @@ private:
 };
 
 #pragma pack(1)
+
+#endif
