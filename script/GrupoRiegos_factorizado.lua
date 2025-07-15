@@ -153,7 +153,7 @@ return {
 	        domoticz.data.estado[boton.name] = true
 	        -- Leemos el contador
 	        domoticz.data.contadorInicial = domoticz.devices('CONTADOR AGUA').counter
-	        domoticz.log('CONTADOR: ' .. domoticz.data.contadorInicial,domoticz.LOG_FORCE)
+	        domoticz.log('CONTADOR (inicial): ' .. domoticz.data.contadorInicial,domoticz.LOG_FORCE)
 	        -- Operamos segun el boton pulsado
 	        if(boton.name == 'COMPLETO') then
                 RiegaCesped(domoticz,0,tCesped)
@@ -195,6 +195,7 @@ return {
                 -- Se ha producido el off y estabamos regando
         	    -- Mandamos el mensaje del consumo
         	    local consumo = domoticz.devices('CONTADOR AGUA').counter - domoticz.data.contadorInicial
+                domoticz.log('CONTADOR (final): ' .. domoticz.devices('CONTADOR AGUA').counter,domoticz.LOG_FORCE)
         	    domoticz.notify('CONSUMO','*Consumidos ' .. consumo .. ' m3*',domoticz.PRIORITY_LOW)
     	        -- Mandamos la notificacion
         	    domoticz.notify('RIEGOFF','*Riego ' .. boton.name .. ' terminado*',domoticz.PRIORITY_HIGH)
