@@ -21,12 +21,30 @@ local MODOS = {
 -- Para pruebas poner a false
 local ABRE_GENERAL = true
 
+-- Tras un reinicio de Domoticz no se manda ningun Off antes de este tiempo (s),
+-- para dar tiempo a que se establezca la comunicacion con los Arduino (igual que en CCR_Watchdog)
+local RETRASO_ARRANQUE = 60
+
+-- Botones de grupo: unica definicion, usada por el disparador, el arranque y el estado inicial
+local NOMBRES_BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
+local ESTADO_INICIAL = {}
+for _, n in ipairs(NOMBRES_BOTONES) do ESTADO_INICIAL[n] = false end
+
+-- Off inmediato, o tras 'espera' segundos si se indica
+local function ApagaEV(dev, espera)
+    if espera then
+        dev.switchOff().afterSec(espera)
+    else
+        dev.switchOff()
+    end
+end
+
 local function RiegaHuerto(domoticz, tRiego)
     domoticz.devices('EV-GOTEOOLIVO').switchOn().afterMin(0).forMin(tRiego)
 end
 
-local function TerminaHuerto(domoticz)
-    domoticz.devices('EV-GOTEOOLIVO').switchOff()
+local function TerminaHuerto(domoticz, espera)
+    ApagaEV(domoticz.devices('EV-GOTEOOLIVO'), espera)
 end
 
 -- Riega una lista de EV en secuencia, factorizando por la descripción del dispositivo. 
@@ -47,9 +65,58 @@ local function RiegaGrupo(domoticz, lista, delay, tRiego, tPatio)
     return total
 end
 
-local function ParaGrupo(domoticz, lista)
+local function ParaGrupo(domoticz, lista, espera)
     for _, nombre in ipairs(lista) do
-        domoticz.devices(nombre).switchOff()
+        ApagaEV(domoticz.devices(nombre), espera)
+    end
+end
+
+-- Cierra todas las EV de todos los modos (red de seguridad si no se conoce el modo activo)
+local function ParaTodas(domoticz, espera)
+    for _, cfg in pairs(MODOS) do
+        ParaGrupo(domoticz, cfg.cesped, espera)
+        ParaGrupo(domoticz, cfg.goteos, espera)
+    end
+end
+
+-- Cierra un grupo: libera el semaforo, marca el grupo como parado y apaga EV-GENERAL y las EV del grupo.
+-- 'modo' es el modo guardado al empezar el riego (domoticz.data.modoActivo).
+-- 'espera' (opcional) retrasa los Off en segundos (usado tras un reinicio).
+local function CierraGrupo(domoticz, nombre, modo, espera)
+    local cfg = MODOS[modo]
+    domoticz.data.semaforo = false
+    domoticz.data.estado[nombre] = false
+    ApagaEV(domoticz.devices('EV-GENERAL'), espera)
+
+    if nombre == 'HUERTO' then
+        TerminaHuerto(domoticz, espera)
+    elseif cfg then
+        if nombre == 'COMPLETO' or nombre == 'CESPED' then
+            ParaGrupo(domoticz, cfg.cesped, espera)
+        end
+        if nombre == 'COMPLETO' or nombre == 'GOTEOS' then
+            ParaGrupo(domoticz, cfg.goteos, espera)
+        end
+    else
+        domoticz.log('No hay modo activo guardado (' .. tostring(modo) .. '); se cierran las EV de todos los modos', domoticz.LOG_ERROR)
+        ParaTodas(domoticz, espera)
+    end
+end
+
+-- Tras un reinicio de Domoticz se pierden los comandos encolados (siguientes EV y Off del boton),
+-- asi que el riego de grupo en curso queda truncado: se cierra y se avisa.
+-- Solo sobrevive el nombre del grupo (data.estado) y el modo con el que empezo (data.modoActivo).
+local function RecuperaArranque(domoticz)
+    domoticz.log('Domoticz reiniciado: comprobando riegos de grupo en curso...', domoticz.LOG_INFO)
+    for _, nombre in ipairs(NOMBRES_BOTONES) do
+        if domoticz.data.estado[nombre] then
+            local consumo = domoticz.devices('CONTADOR AGUA').counter - domoticz.data.contadorInicial
+            domoticz.log('RIEGO ' .. nombre .. ' INTERRUMPIDO POR REINICIO (modo ' .. tostring(domoticz.data.modoActivo) .. '), cierre en ' .. RETRASO_ARRANQUE .. 's', domoticz.LOG_ERROR)
+            domoticz.notify('RIEGOERROR', '*Riego ' .. nombre .. ' interrumpido por reinicio del SCD (consumo ' .. consumo .. ' m3). Cerrando EV*', domoticz.PRIORITY_HIGH)
+            CierraGrupo(domoticz, nombre, domoticz.data.modoActivo, RETRASO_ARRANQUE)
+            -- estado ya es false: el Off del boton llegara al script y se ignorara
+            domoticz.devices(nombre).switchOff()
+        end
     end
 end
 
@@ -64,10 +131,11 @@ end
 return {
     active = true,
     on = {
-        devices = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
+        devices = NOMBRES_BOTONES,
+        system = { 'start' }
     },
     logging = {
-        -- level = domoticz.LOG_DEBUG,
+        --level = domoticz.LOG_DEBUG,
         level = domoticz.LOG_INFO,
         marker = "* GRUPO_RIEGOS *"
     },
@@ -76,9 +144,15 @@ return {
         offInterno      = { initial = false },
         contadorInicial = { initial = 0 },
         modoActivo      = { initial = '' },
-        estado = { initial = { ['COMPLETO'] = false, ['CESPED'] = false, ['GOTEOS'] = false, ['HUERTO'] = false } }
+        estado = { initial = ESTADO_INICIAL }
     },
     execute = function(domoticz, boton)
+
+        -- ARRANQUE DE DOMOTICZ
+        if boton.isSystemEvent and boton.trigger == 'start' then
+            RecuperaArranque(domoticz)
+            return
+        end
 
         -- Leemos el modo de riego
         local modoRiego = domoticz.devices('MODO-RIEGO').levelName
@@ -144,42 +218,21 @@ return {
 
         -- EL BOTON SE APAGA
         if boton.state == 'Off' then
-            domoticz.log('DEVICE: ' .. boton.name ..
-                         ' Estados: ' .. tostring(domoticz.data.estado['COMPLETO']) ..
-                         ' ' .. tostring(domoticz.data.estado['CESPED']) ..
-                         ' ' .. tostring(domoticz.data.estado['GOTEOS']) ..
-                         ' ' .. tostring(domoticz.data.estado['HUERTO']),
-                         domoticz.LOG_DEBUG)
+            domoticz.log('DEVICE: ' .. boton.name .. ' Estados: ' .. domoticz.utils.toJSON(domoticz.data.estado), domoticz.LOG_DEBUG)
 
             if domoticz.data.offInterno then
                 -- Off provocado por el propio script (doble click): se ignora
                 domoticz.data.offInterno = false
 
             elseif domoticz.data.estado[boton.name] then
-                -- Se estaba regando: usamos el modo guardado al empezar, no el actual
-                local cfgActiva = MODOS[domoticz.data.modoActivo]
+                -- Se estaba regando: se usa el modo guardado al empezar (data.modoActivo), no el actual
 
                 local consumo = domoticz.devices('CONTADOR AGUA').counter - domoticz.data.contadorInicial
                 domoticz.notify('CONSUMO ' .. consumo .. ' m3*', '*Consumidos ' .. consumo .. ' m3*', domoticz.PRIORITY_LOW)
                 domoticz.notify('RIEGOFF '.. boton.name, '*Riego ' .. boton.name .. ' terminado*', domoticz.PRIORITY_HIGH)
                 domoticz.log(boton.name .. ' consumidos ' .. consumo .. ' m3*', domoticz.LOG_FORCE)
 
-                domoticz.data.semaforo = false
-                domoticz.data.estado[boton.name] = false
-                domoticz.devices('EV-GENERAL').switchOff()
-
-                if boton.name == 'HUERTO' then
-                    TerminaHuerto(domoticz)
-                elseif cfgActiva then
-                    if boton.name == 'COMPLETO' or boton.name == 'CESPED' then
-                        ParaGrupo(domoticz, cfgActiva.cesped)
-                    end
-                    if boton.name == 'COMPLETO' or boton.name == 'GOTEOS' then
-                        ParaGrupo(domoticz, cfgActiva.goteos)
-                    end
-                else
-                    domoticz.log('No hay modo activo guardado; solo se ha cerrado EV-GENERAL', domoticz.LOG_ERROR)
-                end
+                CierraGrupo(domoticz, boton.name, domoticz.data.modoActivo)
             end
             -- Si no se cumple ninguna, el off viene del temporizador de otro botón: no se hace nada
         end
