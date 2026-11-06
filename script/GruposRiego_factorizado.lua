@@ -25,6 +25,11 @@ local ABRE_GENERAL = true
 -- para dar tiempo a que se establezca la comunicacion con los Arduino (igual que en CCR_Watchdog)
 local RETRASO_ARRANQUE = 60
 
+-- Validacion del consumo notificado: caudal maximo razonable (l/min) y margen (m3).
+-- Si el consumo sale negativo o mayor que el posible, se avisa como no fiable.
+local CAUDAL_MAX_LPM = 30
+local MARGEN_M3 = 0.05
+
 -- Botones de grupo: unica definicion, usada por el disparador, el arranque y el estado inicial
 local NOMBRES_BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
 local ESTADO_INICIAL = {}
@@ -103,6 +108,19 @@ local function CierraGrupo(domoticz, nombre, modo, espera)
     end
 end
 
+-- Calcula el consumo del riego en curso (m3) a partir del contador absoluto de Domoticz.
+-- Devuelve consumo (m3), lectura final y si el dato es fiable.
+-- Es fiable si no es negativo y cabe en el tiempo transcurrido al caudal maximo (CAUDAL_MAX_LPM).
+-- Un consumo negativo indica que el contador bajo durante el riego (posible reinicio del Arduino INT).
+local function CalculaConsumo(domoticz)
+    local final = domoticz.devices('CONTADOR AGUA').counter
+    local consumo = final - domoticz.data.contadorInicial
+    local minutos = (os.time() - domoticz.data.horaInicio) / 60
+    local maximo = minutos * CAUDAL_MAX_LPM / 1000 + MARGEN_M3
+    local fiable = consumo >= 0 and consumo <= maximo
+    return consumo, final, fiable
+end
+
 -- Tras un reinicio de Domoticz se pierden los comandos encolados (siguientes EV y Off del boton),
 -- asi que el riego de grupo en curso queda truncado: se cierra y se avisa.
 -- Solo sobrevive el nombre del grupo (data.estado) y el modo con el que empezo (data.modoActivo).
@@ -110,9 +128,10 @@ local function RecuperaArranque(domoticz)
     domoticz.log('Domoticz reiniciado: comprobando riegos de grupo en curso...', domoticz.LOG_INFO)
     for _, nombre in ipairs(NOMBRES_BOTONES) do
         if domoticz.data.estado[nombre] then
-            local consumo = domoticz.devices('CONTADOR AGUA').counter - domoticz.data.contadorInicial
+            local consumo, final, fiable = CalculaConsumo(domoticz)
+            local txt = string.format('%.3f', consumo) .. (fiable and '' or ' (no fiable)')
             domoticz.log('RIEGO ' .. nombre .. ' INTERRUMPIDO POR REINICIO (modo ' .. tostring(domoticz.data.modoActivo) .. '), cierre en ' .. RETRASO_ARRANQUE .. 's', domoticz.LOG_ERROR)
-            domoticz.notify('RIEGOERROR', '*Riego ' .. nombre .. ' interrumpido por reinicio del SCD (consumo ' .. consumo .. ' m3). Cerrando EV*', domoticz.PRIORITY_HIGH)
+            domoticz.notify('RIEGOERROR', '*Riego ' .. nombre .. ' interrumpido por reinicio del SCD (consumo ' .. txt .. ' m3). Cerrando EV*', domoticz.PRIORITY_HIGH)
             CierraGrupo(domoticz, nombre, domoticz.data.modoActivo, RETRASO_ARRANQUE)
             -- estado ya es false: el Off del boton llegara al script y se ignorara
             domoticz.devices(nombre).switchOff()
@@ -143,6 +162,7 @@ return {
         semaforo        = { initial = false },
         offInterno      = { initial = false },
         contadorInicial = { initial = 0 },
+        horaInicio      = { initial = 0 },
         modoActivo      = { initial = '' },
         estado = { initial = ESTADO_INICIAL }
     },
@@ -192,6 +212,7 @@ return {
             domoticz.data.estado[boton.name] = true
             domoticz.data.modoActivo = modoRiego
             domoticz.data.contadorInicial = domoticz.devices('CONTADOR AGUA').counter
+            domoticz.data.horaInicio = os.time()
             domoticz.log('CONTADOR (inicial): ' .. domoticz.data.contadorInicial, domoticz.LOG_FORCE)
 
             -- Operamos segun el boton pulsado
@@ -227,10 +248,15 @@ return {
             elseif domoticz.data.estado[boton.name] then
                 -- Se estaba regando: se usa el modo guardado al empezar (data.modoActivo), no el actual
 
-                local consumo = domoticz.devices('CONTADOR AGUA').counter - domoticz.data.contadorInicial
-                domoticz.notify('CONSUMO ' .. consumo .. ' m3*', '*Consumidos ' .. consumo .. ' m3*', domoticz.PRIORITY_LOW)
+                local consumo, final, fiable = CalculaConsumo(domoticz)
+                local txt = string.format('%.3f', consumo)
+                domoticz.log(boton.name .. ' CONTADOR inicial ' .. domoticz.data.contadorInicial .. ' final ' .. final .. ' consumo ' .. txt .. ' m3 fiable=' .. tostring(fiable), domoticz.LOG_FORCE)
+                if fiable then
+                    domoticz.notify('CONSUMO ' .. txt .. ' m3*', '*Consumidos ' .. txt .. ' m3*', domoticz.PRIORITY_LOW)
+                else
+                    domoticz.notify('RIEGOERROR', '*Consumo de ' .. boton.name .. ' no fiable: ' .. txt .. ' m3 (contador inicial ' .. domoticz.data.contadorInicial .. ', final ' .. final .. '). Posible reinicio del Arduino INT durante el riego; si es asi, se consumio al menos ' .. string.format('%.3f', math.max(final, 0)) .. ' m3 desde el reinicio*', domoticz.PRIORITY_HIGH)
+                end
                 domoticz.notify('RIEGOFF '.. boton.name, '*Riego ' .. boton.name .. ' terminado*', domoticz.PRIORITY_HIGH)
-                domoticz.log(boton.name .. ' consumidos ' .. consumo .. ' m3*', domoticz.LOG_FORCE)
 
                 CierraGrupo(domoticz, boton.name, domoticz.data.modoActivo)
             end
