@@ -24,7 +24,7 @@
 
 #include "Riego.h"
 
-//#include <MySensors.h>
+// unsigned long lastRelaySync = 0;
 
 int getRelayIdxFromId(int id)
 {
@@ -37,7 +37,7 @@ int getRelayIdxFromId(int id)
 void initRelays(sRELE Rele[], int nRelays)
 {
   for (int i=0 ; i<nRelays; i++) {
-    if (Rele[i].enabled && Rele[i].pin != RESETPIN) {
+    if (Rele[i].enabled && !ES_VIRTUAL(Rele[i].pin)) {
       // Poner el rele en output mode
       pinMode(Rele[i].pin, OUTPUT);
       //Poner initState
@@ -80,7 +80,7 @@ void presentRelays(const sRELE Rele[], int nRelays)
           Serial.print("El estado del rele ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(digitalRead(Rele[i].pin));
         #endif
       bool value;
-      if (Rele[i].pin != RESETPIN) value = digitalRead(Rele[i].pin);
+      if (!ES_VIRTUAL(Rele[i].pin)) value = digitalRead(Rele[i].pin);
       else value = Rele[i].OFF;
       send(relayMsg.set(value?Rele[i].ON:Rele[i].OFF));
     }
@@ -105,7 +105,7 @@ void process_relays()
 
     if (Rele[i].MaxTime == 0 || !releStatus(Rele[i])) continue;
 
-    if (millis() > Rele[i].EndMillis) {
+    if ((long)(millis() - Rele[i].EndMillis) >= 0) {  // corregido para evitar overflow de millis()
       #ifdef DEBUG
         Serial.print("*RELE ");Serial.print(Rele[i].desc);Serial.println(" HA LLEGADO AL MAXIMO DE TIEMPO, APAGANDO*");
       #endif
@@ -116,6 +116,26 @@ void process_relays()
       send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));
     }
   }
+}
+
+// Sincronizamos el estado de los reles con domoticz (sentido Gateway -> Domoticz)
+// Esto es util para cuando se reinicia el Domoticz (arranca con todos como off) para que refleje el estado real del arduino
+// Si quisieramos que la sincronización fuera en sentido inverso (Domoticz -> Arduino) al reiniciar el arduino
+// habria que añadir en el setup() un request de todos los reles y procesar los mensajes entrantes en receive().
+// Otra opción es sincronizar llamando a esta funcion en el loop cada minuto (ojo: actualiza el last seen del EV-device)
+// (Esto se a añadido pero comentado en el loop)
+// 
+void syncRelaysStatus() {
+    #ifdef DEBUG
+        Serial.println("Sincronizando estado de relés con Domoticz...");
+    #endif
+    for (int i = 0; i < NUMBER_OF_RELAYS; i++) {
+        if (Rele[i].enabled && !ES_VIRTUAL(Rele[i].pin)) {
+            MyMessage relayMsg(Rele[i].id, S_BINARY);
+            bool value = digitalRead(Rele[i].pin);
+            send(relayMsg.set(value ? Rele[i].ON : Rele[i].OFF));
+        }
+    }
 }
 
 void initSensors(sSENSOR Sensor[], int nSensors)
@@ -172,15 +192,33 @@ void receive(const MyMessage &message) {
   if (message.type==V_LIGHT) {
     //Debemos traducir message.sensor al indice del array
     idx = getRelayIdxFromId(message.sensor);
+    //Si el id no corresponde a ningun rele o este no está enabled, ignoramos el mensaje
+    if (idx == NOTFOUND || !Rele[idx].enabled) {
+      #ifdef DEBUG
+        Serial.print("V_LIGHT para sensor desconocido, ignorado: "); Serial.println(message.sensor);
+      #endif
+      return;
+    }
     // Cambiar estado del rele
     #ifdef EXTRADEBUG
       Serial.print(Rele[idx].desc);Serial.print(": PIN= ");Serial.println(Rele[idx].pin);
       Serial.print("BOOL= ");Serial.println(message.getBool());
     #endif
-    if (Rele[idx].pin == RESETPIN) {
+    if (Rele[idx].pin == RESETPIN) {  // Si es el pseudo switch de reset, reiniciamos el arduino
       bool value = message.getBool()?Rele[idx].ON:Rele[idx].OFF;
       if (value) asm("jmp 0x0000");
     }
+    else if (Rele[idx].pin == SYNCPIN) {  // Si es el pseudo switch de sincronización, sincronizamos el estado de los reles con domoticz
+      if (message.getBool()) {
+        #ifdef DEBUG
+          Serial.println("Orden de sincronizacion de estado de reles");
+        #endif
+        syncRelaysStatus();
+        //Devolvemos el interruptor a OFF en domoticz
+        MyMessage relayMsg(Rele[idx].id, S_BINARY);
+        send(relayMsg.set(Rele[idx].OFF));
+      }
+    }    
     else {
       digitalWrite(Rele[idx].pin, message.getBool()?Rele[idx].ON:Rele[idx].OFF);
       // Almacenar estado en la eeprom independientemente de initState (por si acaso)
@@ -300,6 +338,12 @@ void loop() {
 
   //Procesar los reles
   process_relays();
+
+  // Sincronización periódica de relés cada RELAY_SYNC_INTERVAL minutos
+  // if (millis() - lastRelaySync >= RELAY_SYNC_INTERVAL) {
+  //     lastRelaySync = millis();
+  //     syncRelaysStatus();
+  // }
 
     //Bucle para procesar todos los sensores
   for (int i=0; i<NUMBER_OF_SENSORS; i++) {

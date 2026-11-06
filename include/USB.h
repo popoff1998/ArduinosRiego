@@ -3,6 +3,6 @@
 //Defines de configuracion
 #define MY_NODE_ID 4
 #define SKETCH_NAME "Gateway Usb"
-#define SKETCH_VERSION "1.0"
+#define SKETCH_VERSION "1.2"
 
 #endif

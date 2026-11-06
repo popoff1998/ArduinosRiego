@@ -13,7 +13,8 @@
 
 //Variables de actuadores
 #ifdef _MAIN_
-#define NUMBER_OF_RELAYS 10
+#define NUMBER_OF_RELAYS 11
+//                      pin, id, desc., ON, OFF, initState, MaxTime, EndMillis, enabled
 struct sRELE Rele[] = {{0, LED_BUILTIN, "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                        {1, 22, "RELE1-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {2, 24, "RELE2-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
@@ -23,10 +24,12 @@ struct sRELE Rele[] = {{0, LED_BUILTIN, "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                        {6, 32, "RELE6-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {7, 34, "RELE7-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {8, 36, "RELE8-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
-                       {9, 38, "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true}};
+                       {9, 38, "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true},
+                       {99, SYNCPIN, "SYNC-EXT", HIGH, LOW, SETOFF, 0, 0, true}};
 
 //Variables de los sensores
 int NUMBER_OF_SENSORS = 12;
+//                          id, pin, powerpin, type, messageType, HWtype, HWsubtype, description, lastValue, flags  
 struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-EXT", 0, ENABLED | POWERONREAD},
                            {11, A2, 33, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM2-EXT", 0, ENABLED | POWERONREAD},
                            {12, A3, 35, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM3-EXT", 0, ENABLED | POWERONREAD},

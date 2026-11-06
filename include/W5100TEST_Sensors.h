@@ -1,17 +1,21 @@
-#ifndef W5100TEST_Sensors_h
-#define W5100TEST_Sensors_h
+#ifndef W5100_Sensors_h
+#define W5100_Sensors_h
 
-//#define HAVE_DALLAS_18B20
-//#define HAVE_DHT11
-//#define HAVE_PHOTORESISTOR
-#define HAVE_INFO
-//#define HAVE_COUNTER
-//#define HAVE_YL38
+// Tipos de sensores soportados:
+// #define HAVE_DALLAS_18B20   // sensor de temperatura Dallas 18B20
+// #define HAVE_DHT11          // sensor de temperatura y humedad DHT11
+// #define HAVE_PHOTORESISTOR  // sensor de luz (lux) con fotoresistor
+#define HAVE_INFO             // pseudo sensor de informacion del sistema (memoria libre, uptime, polltime)
+// #define HAVE_COUNTER        // sensor de contador de pulsos (flujo de agua)
+// #define HAVE_YL38           // sensor de humedad de suelo
+// #define HAVE_PRESS_SENSOR   // sensor de presion de agua
 
 #endif
-//Variables de actuadores
-#define NUMBER_OF_RELAYS 10
 
+//Variables de actuadores
+#ifdef _MAIN_
+#define NUMBER_OF_RELAYS 11
+//                      pin, id, desc., ON, OFF, initState, MaxTime, EndMillis, enabled
 struct sRELE Rele[] = {{0, LED_BUILTIN, "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                        {1, 22, "RELE1-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {2, 24, "RELE2-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
@@ -21,11 +25,12 @@ struct sRELE Rele[] = {{0, LED_BUILTIN, "LED-EXT", HIGH, LOW, KEEP, 0, 0, true},
                        {6, 32, "RELE6-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {7, 34, "RELE7-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
                        {8, 36, "RELE8-EXT", LOW, HIGH, SETOFF, 3600, 0, true},
-                       {9, 38, "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true}};
+                       {9, 38, "RESET-EXT", HIGH, LOW, SETOFF, 0, 0, true},
+                       {99, SYNCPIN, "SYNC-EXT", HIGH, LOW, SETOFF, 0, 0, true}};
 
 //Variables de los sensores
-int NUMBER_OF_SENSORS = 11;
-
+int NUMBER_OF_SENSORS = 12;
+//                          id, pin, powerpin, type, messageType, HWtype, HWsubtype, description, lastValue, flags  
 struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-EXT", 0, ENABLED | POWERONREAD},
                            {11, A2, 33, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM2-EXT", 0, ENABLED | POWERONREAD},
                            {12, A3, 35, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM3-EXT", 0, ENABLED | POWERONREAD},
@@ -36,4 +41,7 @@ struct sSENSOR Sensor[] = {{10, A1, 31, S_MOISTURE, V_LEVEL, YL38, NONE, "SHUM1-
                            {21, 5, NONE, S_TEMP, V_TEMP, DDHHTT, NONE, "ATEMP-EXT", 0, ENABLED},
                            {22, 0, NONE, S_INFO, V_TEXT, INFO, S_POLL_TIME, "POLLT-EXT", 0, REQUESTABLE},
                            {23, 0, NONE, S_INFO, V_TEXT, INFO, S_MEMORY_FREE, "MFREE-EXT", 0, ENABLED},
-                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-EXT", 0, ENABLED}};
+                           {24, 0, NONE, S_INFO, V_TEXT, INFO, S_UPTIME, "UPTIME-EXT", 0, ENABLED},
+                           {25, A8, NONE, S_CUSTOM, V_PRESSURE, PRESS_SENSOR, NONE, "DEP_PRESS-EXT", 0, ENABLED | POWERONREAD}
+                           };
+#endif

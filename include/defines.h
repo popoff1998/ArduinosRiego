@@ -29,6 +29,9 @@
 #define MAXTIMEFACTOR 1    //1 si ponemos el tiempo en segundos, 60 en minutos
 #define MAXPINGFAILURES 10 //Maximo de fallos antes de resetear el arduino
 #define RESETPIN 38        //Pseudopin para el pseudo switch de reset
+#define SYNCPIN 99        //Pseudopin para el pseudo switch de sincronizacion de estado
+#define ES_VIRTUAL(p) ((p) == RESETPIN || (p) == SYNCPIN)
+// #define RELAY_SYNC_INTERVAL 60000 //Intervalo de tiempo para sincronizar el estado de los reles con domoticz (en msec)
 
 //Defines de tipos HWtype
 #define DALLAS_18B20 0
