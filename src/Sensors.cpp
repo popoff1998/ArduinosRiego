@@ -115,7 +115,7 @@ void process_sensor_INFO(sSENSOR _Sensor)
       #ifdef DEBUG
         Serial.print("---> ");Serial.print(_Sensor.desc); Serial.print(": ");Serial.println(pollTime);
       #endif
-      send(_Sensor.msg->set(pollTime));
+      send(_Sensor.msg->set((int32_t)pollTime));  // cast to int32_t to avoid warning in VSCode
       break;
     case S_MEMORY_FREE:
     {
@@ -189,6 +189,10 @@ void receive_sensor_INFO(MyMessage msg)
         #endif
         send(_Sensor.msg->set(event.relative_humidity,1));
       } break;
+      default:
+        #ifdef DEBUG
+          Serial.print("Tipo de sensor DHT11 no soportado: ");Serial.println(_Sensor.MSpresentType);
+        #endif
     }
   }
 

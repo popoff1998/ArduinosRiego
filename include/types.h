@@ -40,8 +40,8 @@ struct sSENSOR
     int id;
     int pin;
     int auxPin;
-    int MSpresentType;
-    int MSmessageType;
+    mysensors_sensor_t MSpresentType;
+    mysensors_data_t MSmessageType;
     int HWtype;
     int HWsubtype;
     char desc[50];

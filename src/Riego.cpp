@@ -74,7 +74,8 @@ void presentRelays(const sRELE Rele[], int nRelays)
       // Registrar todos los reles al gw
       present(Rele[i].id, S_LIGHT,Rele[i].desc);
       // Le tenemos que mandar el estado que tiene.
-      MyMessage relayMsg(Rele[i].id,S_BINARY);
+      // Para cualquier carga de tipo todo/nada (relés, luces, electroválvulas, interruptores), el tipo de variable siempre es el mismo: V_STATUS.
+      MyMessage relayMsg(Rele[i].id,V_STATUS); // corregido para V2.3.2 (V2.2.0 toleraba S_LIGHT, pero no era correcto) 
         #ifdef EXTRADEBUG
           Serial.print("El estado del rele ");Serial.print(Rele[i].desc);Serial.print(" es: ");Serial.println(digitalRead(Rele[i].pin));
         #endif
@@ -111,7 +112,7 @@ void process_relays()
       //Apagamos el rele ...
       digitalWrite(Rele[i].pin,Rele[i].OFF);
       //... y notificamos a domoticz
-      MyMessage relayMsg(Rele[i].id,S_LIGHT);
+      MyMessage relayMsg(Rele[i].id,V_STATUS);
       send(relayMsg.set(digitalRead(Rele[i].pin)?Rele[i].ON:Rele[i].OFF));
     }
   }
@@ -130,7 +131,7 @@ void syncRelaysStatus() {
     #endif
     for (int i = 0; i < NUMBER_OF_RELAYS; i++) {
         if (Rele[i].enabled && !ES_VIRTUAL(Rele[i].pin)) {
-            MyMessage relayMsg(Rele[i].id, S_BINARY);
+            MyMessage relayMsg(Rele[i].id, V_STATUS);
             bool value = digitalRead(Rele[i].pin);
             send(relayMsg.set(value ? Rele[i].ON : Rele[i].OFF));
         }
@@ -214,7 +215,7 @@ void receive(const MyMessage &message) {
         #endif
         syncRelaysStatus();
         //Devolvemos el interruptor a OFF en domoticz
-        MyMessage relayMsg(Rele[idx].id, S_BINARY);
+        MyMessage relayMsg(Rele[idx].id, V_STATUS);
         send(relayMsg.set(Rele[idx].OFF));
       }
     }    
