@@ -6,7 +6,7 @@
 #define SKETCH_VERSION "1.2"
 
 //Defines del gateway
-#define MY_IP_ADDRESS 192, 168, 100, 61 // If this is disabled, DHCP is used to retrieve address
+// #define MY_IP_ADDRESS 192, 168, 100, 61 // se le pasa por parametro de compilacion en platformio.ini
 #define MY_PORT 5003
 #define MY_MAC_ADDRESS 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEC  // direccion MAC que se usara para el Gateway (asignada aqui)
 

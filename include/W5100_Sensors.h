@@ -1,13 +1,14 @@
 #ifndef W5100_Sensors_h
 #define W5100_Sensors_h
 
-#define HAVE_DALLAS_18B20
-#define HAVE_DHT11
-#define HAVE_PHOTORESISTOR
-#define HAVE_INFO
-//#define HAVE_COUNTER
-#define HAVE_YL38
-#define HAVE_PRESS_SENSOR
+// Tipos de sensores soportados:
+#define HAVE_DALLAS_18B20   // sensor de temperatura Dallas 18B20
+#define HAVE_DHT11          // sensor de temperatura y humedad DHT11
+#define HAVE_PHOTORESISTOR  // sensor de luz (lux) con fotoresistor
+#define HAVE_INFO           // pseudo sensor de informacion del sistema (memoria libre, uptime, polltime)
+//#define HAVE_COUNTER      // sensor de contador de pulsos (flujo de agua)
+#define HAVE_YL38           // sensor de humedad de suelo
+#define HAVE_PRESS_SENSOR   // sensor de presion de agua
 
 #endif
 

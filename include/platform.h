@@ -1,14 +1,10 @@
 #ifndef platform_h
 #define platform_h
-// (se hace por ENV en platformio.ini) Seleccionar la plataform W5100 o USB o TEST
-//#define W5100GATEWAY
-//#define W5100TEST
-//#define USBGATEWAY
 #endif
 
 //Para que mysensors sepa como comportarse
 #ifdef W5100GATEWAY
-    #define MY_GATEWAY_W5100
+    #define MY_GATEWAY_W5100  
     #include "W5100.h"
 #endif
 
@@ -16,3 +12,9 @@
     #define MY_GATEWAY_SERIAL
     #include "USB.h"
 #endif
+
+#ifdef W5100TEST
+    #define MY_GATEWAY_W5100
+    #include "W5100TEST.h"
+#endif
+

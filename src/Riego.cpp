@@ -10,16 +10,15 @@
 #include "globals.h" // Mis variables globales
 
 #ifdef W5100GATEWAY
-  #include "W5100_Sensors.h"
+  #include "W5100_Sensors.h"  // Sensores y reles para al arduino EXT (Ethernet)
 #endif
 
 #ifdef USBGATEWAY
-  #include "USB_Sensors.h"
+  #include "USB_Sensors.h"  // Sensores y reles para al arduino INT (USB)
 #endif
 
 #ifdef W5100TEST
-  #include "W5100TEST.h"
-  #include "W5100TEST_Sensors.h"
+  #include "W5100TEST_Sensors.h" // Sensores y reles para al arduino EXT de la maqueta (Ethernet)
 #endif
 
 #include "Riego.h"
