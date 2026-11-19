@@ -13,8 +13,29 @@ local EVS = { 'EV-TURBINAS', 'EV-PORCHE', 'EV-CUARTILLO', 'EV-PIEDRAS', 'EV-PATI
               'EV-ROCALLA', 'EV-GOTEOOLIVO', 'EV-GOTEOALTO', 'EV-GOTEOBAJO' }
 local GENERAL = 'EV-GENERAL'
 local BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
+local TODAS = {}  -- todas las EV de riego mas la general
+for _, n in ipairs(EVS) do TODAS[#TODAS + 1] = n end
+TODAS[#TODAS + 1] = GENERAL
 
 -- AJUSTAR
+-- Cierre automatico: si CIERRE_AUTOMATICO = true, los avisos RIEGOERROR de abajo ademas mandan Off a la(s) EV afectada(s).
+-- El cierre se envia junto con cada aviso (se repite cuando el aviso se repite). Cada tipo se puede activar/desactivar:
+--   ccr              EV sigue abierta tras vencer el tiempo del WDG de la CCR      -> Off a esa EV
+--   arduino          EV abierta > LIMITE_EV_MIN (fallo del watchdog del Arduino)   -> Off a esa EV
+--   tope_grupo       boton de grupo en On > LIMITE_GRUPO_MIN                        -> Off al boton (GruposRiego cierra el grupo)
+--   tope_general     EV-GENERAL abierta > LIMITE_GENERAL_MIN con riego              -> Off a EV-GENERAL
+--   general_olvidada EV-GENERAL abierta sola >= 60 min fuera de casa                -> Off a EV-GENERAL
+--   multi            varias EV abiertas a la vez en un riego secuencial             -> Off a todas las EV de riego abiertas
+--   caudal_ev        caudal excesivo con EV(s) de riego abiertas                    -> Off a esas EV
+--   caudal_general   caudal alto con solo EV-GENERAL abierta (fuera de casa)        -> Off a EV-GENERAL
+--   caudal_cerrado   caudal con todo cerrado (EV sin cerrar o fuga)                 -> Off a todas las EV de riego y a EV-GENERAL
+-- El aviso de riego sin caudal (bypass abierto, EV sin abrir) nunca cierra nada.
+local CIERRE_AUTOMATICO = false
+local CIERRA_EN_ERROR = {
+    ccr = true, arduino = true, tope_grupo = true, tope_general = true, general_olvidada = true,
+    multi = true, caudal_ev = true, caudal_general = true, caudal_cerrado = true
+}
+
 local SINC_BOTONES   = { 'SINC-EXT', 'SINC-INT' } -- botones que piden a cada Arduino su estado real de reles
 local SINC_ESPERA_S   = 50   -- s que se espera tras pedir la sincronizacion antes de dar el aviso de 62 min
 local ESCALONES_MANUAL = { 15, 30, 45 } -- min: avisos por EV abierta a mano (a los 60 min corta el watchdog del Arduino)
@@ -58,6 +79,13 @@ local function pideSync(domoticz)
     return hay
 end
 
+-- Asigna a domoticz.data solo si el valor cambia (evita escrituras innecesarias en la base de datos)
+local function setData(domoticz, clave, valor)
+    if domoticz.data[clave] ~= valor then
+        domoticz.data[clave] = valor
+    end
+end
+
 -- Marca que se ha avisado de 'nivel' para ese dispositivo y clave. Devuelve true solo si el nivel sube (aviso nuevo)
 local function marca(domoticz, nombre, clave, nivel)
     local av = domoticz.data.avisos[nombre]
@@ -73,8 +101,23 @@ local function marca(domoticz, nombre, clave, nivel)
 end
 
 -- Aviso sin repeticion: solo si el nivel sube respecto al ultimo avisado para ese dispositivo y clave
-local function avisa(domoticz, nombre, clave, nivel, subject, msg, prioridad)
+-- 'tipo' y 'cerrar' (lista de dispositivos) son opcionales: si el cierre automatico esta activo para ese tipo,
+-- se manda Off a esos dispositivos y se anota en el mensaje.
+local function avisa(domoticz, nombre, clave, nivel, subject, msg, prioridad, tipo, cerrar)
     if marca(domoticz, nombre, clave, nivel) then
+        if CIERRE_AUTOMATICO and tipo and CIERRA_EN_ERROR[tipo] and cerrar and #cerrar > 0 then
+            local lista = {}
+            for _, n in ipairs(cerrar) do
+                local d = domoticz.devices(n)
+                if d then
+                    d.switchOff()
+                    lista[#lista + 1] = n
+                end
+            end
+            if #lista > 0 then
+                msg = (msg:gsub('%*$', '')) .. ' - cierre automatico: ' .. table.concat(lista, ', ') .. '*'
+            end
+        end
         domoticz.log(msg, domoticz.LOG_ERROR)
         domoticz.notify(subject, msg, prioridad)
     end
@@ -100,7 +143,8 @@ local function avisoManualGeneral(domoticz, minutos)
     local msg = GENERAL .. ' abierta a mano desde hace ' .. math.floor(minutos) .. ' min'
     if nivel >= 60 then
         avisa(domoticz, GENERAL, 'manual', nivel, 'RIEGOERROR',
-              '*' .. msg .. ' (EV-GENERAL no tiene corte automatico): cerrar*', domoticz.PRIORITY_HIGH)
+              '*' .. msg .. ' (EV-GENERAL no tiene corte automatico): cerrar*', domoticz.PRIORITY_HIGH,
+              'general_olvidada', { GENERAL })
     else
         avisa(domoticz, GENERAL, 'manual', nivel, 'RIEGOINFO', '*' .. msg .. ' (posible olvido)*', domoticz.PRIORITY_NORMAL)
     end
@@ -154,9 +198,12 @@ return {
                 end
                 return true
             end
-            domoticz.data.abiertaDesde[nombre] = nil
-            domoticz.data.avisos[nombre] = nil
-            domoticz.data.sincPedida[nombre] = nil
+            if domoticz.data.abiertaDesde[nombre] ~= nil or domoticz.data.avisos[nombre] ~= nil
+               or domoticz.data.sincPedida[nombre] ~= nil then
+                domoticz.data.abiertaDesde[nombre] = nil
+                domoticz.data.avisos[nombre] = nil
+                domoticz.data.sincPedida[nombre] = nil
+            end
             return false
         end
         local function minutos(nombre)
@@ -197,7 +244,8 @@ return {
                 if min > ccrSeg / 60 + MARGEN_CCR_MIN then
                     avisa(domoticz, nombre, 'ccr', 1, 'RIEGOERROR',
                           '*' .. nombre .. ' sigue abierta ' .. math.floor(min) .. ' min tras un riego de la CCR de ' ..
-                          math.floor(ccrSeg / 60) .. ' min: revisar*', domoticz.PRIORITY_HIGH)
+                          math.floor(ccrSeg / 60) .. ' min: revisar*', domoticz.PRIORITY_HIGH,
+                          'ccr', { nombre })
                 end
             elseif hayGrupo then
                 -- riego de grupo: sin aviso propio de tiempo (lo cubre el limite general de 62 min de mas abajo)
@@ -225,7 +273,7 @@ return {
                     avisa(domoticz, nombre, 'arduino', nivel, 'RIEGOERROR',
                           '*' .. nombre .. ' lleva ' .. math.floor(min) .. ' min abierta (mas de 60)' ..
                           (pedida and ', tambien tras sincronizar con los Arduino' or '') .. ': posible fallo del watchdog*',
-                          domoticz.PRIORITY_HIGH)
+                          domoticz.PRIORITY_HIGH, 'arduino', { nombre })
                 end
             end
         end
@@ -243,13 +291,14 @@ return {
             local min = minutos(nombre)
             if min > LIMITE_GRUPO_MIN then
                 avisa(domoticz, nombre, 'tope', 1, 'RIEGOERROR',
-                      '*Boton ' .. nombre .. ' en On desde hace ' .. math.floor(min) .. ' min: revisar*', domoticz.PRIORITY_HIGH)
+                      '*Boton ' .. nombre .. ' en On desde hace ' .. math.floor(min) .. ' min: revisar*', domoticz.PRIORITY_HIGH,
+                      'tope_grupo', { nombre })
             end
         end
 
         -- 5. EV-GENERAL
         local sola = generalAbierta and #abiertas == 0 and not hayGrupo and not hayCCR
-        domoticz.data.generalSola = sola and (domoticz.data.generalSola + 1) or 0
+        setData(domoticz, 'generalSola', sola and (domoticz.data.generalSola + 1) or 0)
         if generalAbierta then
             local min = minutos(GENERAL)
             if sola then
@@ -260,18 +309,19 @@ return {
                 end
             elseif min > LIMITE_GENERAL_MIN then
                 avisa(domoticz, GENERAL, 'tope', 1, 'RIEGOERROR',
-                      '*EV-GENERAL abierta ' .. math.floor(min) .. ' min: revisar*', domoticz.PRIORITY_HIGH)
+                      '*EV-GENERAL abierta ' .. math.floor(min) .. ' min: revisar*', domoticz.PRIORITY_HIGH,
+                      'tope_general', { GENERAL })
             end
         end
 
         -- 6. Varias EV a la vez fuera de un riego manual: la CCR y los grupos riegan en secuencia
         local anomalo = #abiertas > 1 and (hayCCR or hayGrupo)
-        domoticz.data.multi = anomalo and (domoticz.data.multi + 1) or 0
+        setData(domoticz, 'multi', anomalo and (domoticz.data.multi + 1) or 0)
         if domoticz.data.multi >= 2 then
             avisa(domoticz, '_anomalia', 'multi', 1, 'RIEGOERROR',
                   '*Varias EV abiertas a la vez en un riego secuencial: ' .. table.concat(abiertas, ', ') .. '*',
-                  domoticz.PRIORITY_HIGH)
-        elseif domoticz.data.multi == 0 then
+                  domoticz.PRIORITY_HIGH, 'multi', abiertas)
+        elseif domoticz.data.multi == 0 and domoticz.data.avisos['_anomalia'] then
             domoticz.data.avisos['_anomalia'] = nil
         end
 
@@ -300,22 +350,25 @@ return {
         end
         domoticz.log('Caudal ' .. tostring(flujo) .. ' l/min, umbral ' .. umbral .. ', EV abiertas ' .. #abiertas, domoticz.LOG_DEBUG)
         if flujo and flujo >= umbral then
-            domoticz.data.excesoCaudal = domoticz.data.excesoCaudal + 1
+            setData(domoticz, 'excesoCaudal', domoticz.data.excesoCaudal + 1)
             if domoticz.data.excesoCaudal >= muestras then
                 local nivel = 1 + math.floor((domoticz.data.excesoCaudal - muestras) / CAUDAL_REAVISO)
-                local msg
+                local msg, tipo, cerrar
                 if sinEV and generalCerrada then
+                    tipo, cerrar = 'caudal_cerrado', TODAS
                     msg = '*Caudal de ' .. flujo .. ' l/min con EV-GENERAL y todas las EV de riego cerradas (umbral ' .. umbral .. '): EV sin cerrar o fuga*'
                 elseif sinEV then
+                    tipo, cerrar = 'caudal_general', { GENERAL }
                     msg = '*Caudal de ' .. flujo .. ' l/min con EV-GENERAL abierta y ninguna EV de riego abierta (umbral ' .. umbral .. '): fuga o uso de la casa*'
                 else
+                    tipo, cerrar = 'caudal_ev', abiertas
                     msg = '*Caudal excesivo: ' .. flujo .. ' l/min (umbral ' .. umbral .. ') con ' .. table.concat(abiertas, ', ') .. '*'
                 end
-                avisa(domoticz, '_caudal', 'exceso', nivel, 'RIEGOERROR', msg, domoticz.PRIORITY_HIGH)
+                avisa(domoticz, '_caudal', 'exceso', nivel, 'RIEGOERROR', msg, domoticz.PRIORITY_HIGH, tipo, cerrar)
             end
         else
-            domoticz.data.excesoCaudal = 0
-            domoticz.data.avisos['_caudal'] = nil
+            setData(domoticz, 'excesoCaudal', 0)
+            if domoticz.data.avisos['_caudal'] then domoticz.data.avisos['_caudal'] = nil end
         end
 
         -- 8. Riego de grupo fuera de casa sin caudal: el bypass deberia estar cerrado y el medidor marcar 12-18 l/min.
@@ -327,13 +380,13 @@ return {
                 if minutos(nombre) < SIN_CAUDAL_ESPERA_MIN then sinCaudalAhora = false end
             end
         end
-        domoticz.data.sinCaudal = sinCaudalAhora and (domoticz.data.sinCaudal + 1) or 0
+        setData(domoticz, 'sinCaudal', sinCaudalAhora and (domoticz.data.sinCaudal + 1) or 0)
         if domoticz.data.sinCaudal >= SIN_CAUDAL_MUESTRAS then
             avisa(domoticz, '_sincaudal', 'sin', 1, 'RIEGOERROR',
                   '*Riego de grupo ' .. table.concat(botonesOn, ', ') .. ' con ' .. table.concat(abiertas, ', ') ..
                   ' abierta y caudal ' .. flujo .. ' l/min (esperado 12-18): bypass abierto, EV sin abrir o suministro cortado*',
                   domoticz.PRIORITY_NORMAL)
-        elseif domoticz.data.sinCaudal == 0 then
+        elseif domoticz.data.sinCaudal == 0 and domoticz.data.avisos['_sincaudal'] then
             domoticz.data.avisos['_sincaudal'] = nil
         end
     end
