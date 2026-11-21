@@ -3,8 +3,8 @@
 --   CCR    -> el text-device "CCR_Watchdog" contiene "WDG:idx:seg" con el idx de esa EV (la CCR riega siempre en secuencia)
 --   SCD    -> hay algun boton de grupo (COMPLETO, CESPED, GOTEOS, HUERTO) en On (el riego de grupo tambien es secuencial)
 --   MANUAL -> ninguna de las dos: avisos a los 15-30-45 min (a los 60 corta el watchdog del Arduino); EV-GENERAL sigue cada 30 min desde los 60
--- El estado que ve Domoticz es el de la ultima orden, no el real del rele (no hay feedback CEV->SCD todavia):
--- por eso los avisos de >60 min dicen "figura abierta" y piden revisar, sin afirmar que el watchdog del Arduino ha fallado.
+-- El estado que ve Domoticz es el de la ultima orden o el ultimo que notifico el Arduino (tambien notifica el Off cuando corta a los 60 min).
+-- Antes del aviso de >60 min se pide el estado real a los Arduino con los pseudo-reles SYNC-EXT/SYNC-INT (opcional: SYNC_ANTES_AVISO).
 -- Caudal: si FLUJO AGUA (l/min) supera el umbral de forma sostenida se avisa (tuberia rota, grifo abierto, fuga).
 -- Un circuito de EV consume 12-18 l/min. 0 l/min con una EV abierta NO es error en casa (bypass abierto),
 -- pero SI lo es en un riego de grupo estando fuera (MODO-RIEGO = CORDOBA*): ahi el bypass debe estar cerrado.
@@ -13,11 +13,12 @@ local EVS = { 'EV-TURBINAS', 'EV-PORCHE', 'EV-CUARTILLO', 'EV-PIEDRAS', 'EV-PATI
               'EV-ROCALLA', 'EV-GOTEOOLIVO', 'EV-GOTEOALTO', 'EV-GOTEOBAJO' }
 local GENERAL = 'EV-GENERAL'
 local BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
+local SYNC_BOTONES   = { 'SYNC-EXT', 'SYNC-INT' } -- pseudo-reles que piden a cada Arduino su estado real de reles
+
 local TODAS = {}  -- todas las EV de riego mas la general
 for _, n in ipairs(EVS) do TODAS[#TODAS + 1] = n end
 TODAS[#TODAS + 1] = GENERAL
 
--- AJUSTAR
 -- Cierre automatico: si CIERRE_AUTOMATICO = true, los avisos RIEGOERROR de abajo ademas mandan Off a la(s) EV afectada(s).
 -- El cierre se envia junto con cada aviso (se repite cuando el aviso se repite). Cada tipo se puede activar/desactivar:
 --   ccr              EV sigue abierta tras vencer el tiempo del WDG de la CCR      -> Off a esa EV
@@ -35,9 +36,9 @@ local CIERRA_EN_ERROR = {
     ccr = true, arduino = true, tope_grupo = true, tope_general = true, general_olvidada = true,
     multi = true, caudal_ev = true, caudal_general = true, caudal_cerrado = true
 }
-
-local SINC_BOTONES   = { 'SINC-EXT', 'SINC-INT' } -- botones que piden a cada Arduino su estado real de reles
-local SINC_ESPERA_S   = 50   -- s que se espera tras pedir la sincronizacion antes de dar el aviso de 62 min
+-- AJUSTAR
+local SYNC_ANTES_AVISO = true -- true: antes del aviso de LIMITE_EV_MIN se pide el SYNC y se avisa solo si la EV sigue On; false: se avisa directamente
+local SYNC_ESPERA_S   = 50   -- s que se espera tras pedir la sincronizacion antes de dar el aviso de 62 min
 local ESCALONES_MANUAL = { 15, 30, 45 } -- min: avisos por EV abierta a mano (a los 60 min corta el watchdog del Arduino)
 local GRACIA_ARRANQUE   = 180  -- s tras arrancar Domoticz sin vigilar (los estados no son fiables)
 local MARGEN_CCR_MIN    = 5    -- min sobre el tiempo del WDG antes de avisar de que la EV sigue On
@@ -65,11 +66,15 @@ local EN_CASA = {
     ['CORDOBA-HUERTO'] = false
 }
 
--- Pide a los Arduino que envien el estado real de sus reles (pseudo-reles SINC-EXT y SINC-INT).
+-- *****************************
+--    FUNCIONES AUXILIARES
+-- *****************************
+
+-- Pide a los Arduino que envien el estado real de sus reles (pseudo-reles SYNC-EXT y SYNC-INT).
 -- Devuelve false si no existe ninguno de los botones (no se puede verificar).
 local function pideSync(domoticz)
     local hay = false
-    for _, n in ipairs(SINC_BOTONES) do
+    for _, n in ipairs(SYNC_BOTONES) do
         local d = domoticz.devices(n)
         if d then
             d.switchOn()
@@ -150,13 +155,17 @@ local function avisoManualGeneral(domoticz, minutos)
     end
 end
 
+-- ***************************
+--        PRINCIPAL
+-- ***************************
+
 return {
     on = {
         timer = { 'every minute' },
         system = { 'start' }
     },
     logging = {
-        level = domoticz.LOG_ERROR,
+        level = domoticz.LOG_INFO,
         --level = domoticz.LOG_DEBUG,
         marker = '* SCD_WATCHDOG *'
     },
@@ -166,7 +175,7 @@ return {
         tArranque    = { initial = 0 },
         multi        = { initial = 0 },   -- muestras seguidas con varias EV abiertas a la vez
         generalSola  = { initial = 0 },   -- muestras seguidas con EV-GENERAL sola (sin EV de riego ni origen conocido)
-        sincPedida   = { initial = {} },  -- nombre -> epoch en que se pidio la sincronizacion antes de avisar de >62 min
+        syncPedida   = { initial = {} },  -- nombre -> epoch en que se pidio la sincronizacion antes de avisar de >62 min
         excesoCaudal = { initial = 0 },   -- minutos seguidos con caudal por encima del umbral
         sinCaudal    = { initial = 0 }    -- minutos seguidos de riego de grupo fuera de casa sin caudal
     },
@@ -174,10 +183,11 @@ return {
         local ahora = os.time()
 
         if item.isSystemEvent then
+            -- abiertaDesde y avisos se conservan: las EV solo las cierra el SCD (o el corte de 60 min del Arduino),
+            -- asi que la hora de apertura guardada sigue siendo valida y se cuenta el tiempo real, parada incluida.
+            -- Las EV que ya esten cerradas tras el SYNC se limpian solas en la primera pasada tras la gracia.
             domoticz.data.tArranque = ahora
-            domoticz.data.abiertaDesde = {}
-            domoticz.data.avisos = {}
-            domoticz.data.sincPedida = {}
+            domoticz.data.syncPedida = {}
             domoticz.data.multi = 0
             domoticz.data.generalSola = 0
             domoticz.data.excesoCaudal = 0
@@ -185,6 +195,7 @@ return {
             return
         end
 
+        -- 0. Si no ha pasado el tiempo de gracia tras el arranque no hace nada
         if ahora - domoticz.data.tArranque < GRACIA_ARRANQUE then
             return
         end
@@ -199,10 +210,10 @@ return {
                 return true
             end
             if domoticz.data.abiertaDesde[nombre] ~= nil or domoticz.data.avisos[nombre] ~= nil
-               or domoticz.data.sincPedida[nombre] ~= nil then
+               or domoticz.data.syncPedida[nombre] ~= nil then
                 domoticz.data.abiertaDesde[nombre] = nil
                 domoticz.data.avisos[nombre] = nil
-                domoticz.data.sincPedida[nombre] = nil
+                domoticz.data.syncPedida[nombre] = nil
             end
             return false
         end
@@ -260,15 +271,15 @@ return {
         end
 
         -- 3b. Cualquier EV de riego (salvo la general) abierta mas de LIMITE_EV_MIN: no ha actuado el watchdog del Arduino.
-        --     Antes de avisar se piden los estados reales a los Arduino (SINC-EXT/INT) y se espera al siguiente minuto:
+        --     Si SYNC_ANTES_AVISO, antes de avisar se piden los estados reales a los Arduino (SYNC-EXT/INT) y se espera SYNC_ESPERA_S:
         --     si el Arduino ya la habia cerrado y solo se perdio su notificacion, Domoticz la pasa a Off y no se avisa.
         for _, nombre in ipairs(abiertas) do
             local min = minutos(nombre)
             if min > LIMITE_EV_MIN then
-                local pedida = domoticz.data.sincPedida[nombre]
-                if not pedida and pideSync(domoticz) then
-                    domoticz.data.sincPedida[nombre] = ahora
-                elseif not pedida or ahora - pedida >= SINC_ESPERA_S then
+                local pedida = domoticz.data.syncPedida[nombre]
+                if SYNC_ANTES_AVISO and not pedida and pideSync(domoticz) then
+                    domoticz.data.syncPedida[nombre] = ahora
+                elseif not pedida or ahora - pedida >= SYNC_ESPERA_S then
                     local nivel = 1 + math.floor((min - LIMITE_EV_MIN) / REAVISO_ARDUINO_MIN)
                     avisa(domoticz, nombre, 'arduino', nivel, 'RIEGOERROR',
                           '*' .. nombre .. ' lleva ' .. math.floor(min) .. ' min abierta (mas de 60)' ..
