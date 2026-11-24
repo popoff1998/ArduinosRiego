@@ -1,4 +1,11 @@
--- Tabla MODOS con los nombres EXACTOS de los modos del selector MODO-RIEGO. los grupos y las EV que componen cada grupo
+-- Este script realiza las siguientes funciones:
+--  * al pulsar un boton de riego de grupo en la web: Programa este en la cola de domoticz.
+--  * al acabar el riego: Informa del consumo total de agua validándolo.
+--  * tras un arranque: Si habia riego de grupo lo cancela. 
+--                      Pide el estado real de las EVs a los arduinos.
+--                      Bloquea los botones de grupo durante VENTANA_ARRANQUE segundos (2 minutos por defecto).
+
+-- Tabla MODOS con los nombres EXACTOS de los modos del selector MODO-RIEGO, los grupos y las EV que componen cada grupo
 local MODOS = {
     ['VERANO'] = {
         cesped = { 'EV-TURBINAS', 'EV-PORCHE', 'EV-CUARTILLO' },
@@ -18,22 +25,50 @@ local MODOS = {
     }
 }
 
+-- Botones de grupo:
+local NOMBRES_BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
+
 -- Para pruebas poner a false
 local ABRE_GENERAL = true
 
 -- Tras un reinicio de Domoticz no se manda ningun Off antes de este tiempo (s),
--- para dar tiempo a que se establezca la comunicacion con los Arduino (igual que en CCR_Watchdog)
+-- para dar tiempo a que se establezca la comunicacion con los Arduinos
 local RETRASO_ARRANQUE = 60
+
+-- Tras el arranque se piden a los Arduino los estados reales de sus reles (pseudo-reles SYNC-EXT y SYNC-INT),
+-- tambien con retraso, para dar tiempo a que se conecten. Debe salir antes de la recuperacion de CCR_Watchdog (90 s)
+local SYNC_BOTONES = { 'SYNC-EXT', 'SYNC-INT' }
+local RETRASO_SYNC = RETRASO_ARRANQUE + 10
+
+-- Durante los primeros VENTANA_ARRANQUE segundos tras el arranque se ignoran los botones de grupo pulsados
+-- (la recuperacion de arranque aun no ha terminado y podria interferir con el nuevo riego). Para desactivarlo: false
+local BLOQUEA_RIEGO_ARRANQUE = true
+local VENTANA_ARRANQUE = 120
 
 -- Validacion del consumo notificado: caudal maximo razonable (l/min) y margen (m3).
 -- Si el consumo sale negativo o mayor que el posible, se avisa como no fiable.
 local CAUDAL_MAX_LPM = 30
 local MARGEN_M3 = 0.05
 
--- Botones de grupo: unica definicion, usada por el disparador, el arranque y el estado inicial
-local NOMBRES_BOTONES = { 'COMPLETO', 'CESPED', 'GOTEOS', 'HUERTO' }
 local ESTADO_INICIAL = {}
 for _, n in ipairs(NOMBRES_BOTONES) do ESTADO_INICIAL[n] = false end
+
+
+-- ************************************************
+-- *             FUNCIONES AUXILIARES             *
+-- ************************************************
+
+-- Pide a los Arduino el estado real de sus reles, con el retraso RETRASO_SYNC
+local function PideSyncArranque(domoticz)
+    for _, nombre in ipairs(SYNC_BOTONES) do
+        local d = domoticz.devices(nombre)
+        if d then
+            d.switchOn().afterSec(RETRASO_SYNC)
+        else
+            domoticz.log('No existe el dispositivo ' .. nombre .. ': no se sincroniza ese Arduino tras el arranque', domoticz.LOG_ERROR)
+        end
+    end
+end
 
 -- Off inmediato, o tras 'espera' segundos si se indica
 local function ApagaEV(dev, espera)
@@ -147,8 +182,11 @@ local function AbreGeneral(domoticz, tiempo)
     end
 end
 
+-- ************************************************
+-- *               FUNCION PRINCIPAL              *
+-- ************************************************
+
 return {
-    active = true,
     on = {
         devices = NOMBRES_BOTONES,
         system = { 'start' }
@@ -164,13 +202,24 @@ return {
         contadorInicial = { initial = 0 },
         horaInicio      = { initial = 0 },
         modoActivo      = { initial = '' },
+        tArranque       = { initial = 0 },
         estado = { initial = ESTADO_INICIAL }
     },
     execute = function(domoticz, boton)
 
         -- ARRANQUE DE DOMOTICZ
         if boton.isSystemEvent and boton.trigger == 'start' then
+            domoticz.data.tArranque = os.time()
             RecuperaArranque(domoticz)
+            PideSyncArranque(domoticz)
+            return
+        end
+
+        -- Boton pulsado durante la ventana de arranque: se ignora (el Off que provoca se descarta con offInterno)
+        if BLOQUEA_RIEGO_ARRANQUE and boton.state == 'On' and os.time() - domoticz.data.tArranque < VENTANA_ARRANQUE then
+            domoticz.notify('RIEGOERROR', '*Riego ' .. boton.name .. ' no activado: Domoticz acaba de arrancar (espere ' .. VENTANA_ARRANQUE .. ' s)*', domoticz.PRIORITY_HIGH)
+            domoticz.data.offInterno = true
+            boton.switchOff()
             return
         end
 
