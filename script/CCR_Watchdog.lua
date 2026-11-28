@@ -1,6 +1,7 @@
 -- Este script gestiona el watchdog de parada de emergencia de una EV abierta por la CCR y que esta no ha podido parar
 -- Los mensajes que la CCR envia al text-device "CCR_Watchdog" lo activan o desactivan
--- Este temporizador de parada que se pierde en caso de reinicio se recupera con este mismo script
+-- Este temporizador de parada que se pierde en caso de reinicio se recupera con este mismo script,
+-- RETRASO_RECUPERA segundos despues del arranque (evento RECUPERA_WDG), cuando ya se ha sincronizado el estado real de las EV
 
 -- funcion para rehabilitar posibles eventos de parada que se hayan perdido tras un arranque,
 -- para ello lee la cola persistente domoticz.data.limitesParada.
@@ -8,11 +9,18 @@
 -- salvo en el caso de Limite de antiguedad: pasado este tiempo desde el limite vencido, el watchdog de los Arduino (60 min)
 -- ya habra cerrado la EV, asi que se ignora y se borra la entrada.
 local MAX_ANTIGUEDAD = 3600  -- 60 minutos adicionales a la hora limite
-local RETRASO_ARRANQUE = 60   -- AJUSTAR midiendo cuanto tarde la conexion real del EXT tras el arranque
+local CHECK_MARGEN_S = 10     -- seg entre la hora del Off y su CHECK_WDG: tiempo para que llegue el ACK del Arduino (hasta ~5 s con reintento)
+local RETRASO_RECUPERA = 90   -- seg Debe ser mayor que el retraso del SYNC que pide GruposRiego_factorizado (RETRASO_SYNC, 70 s)
+
+-- El estado de una EV es valido si Domoticz lo ha recibido del Arduino despues del arranque (su "last seen" es posterior):
+-- eso indica que el SYNC se ejecuto para esa EV. Si no, el estado es el guardado antes de la caida y no es fiable.
+local function estadoValido(dev, ahora, tArranque)
+    return dev.lastUpdate ~= nil and dev.lastUpdate.secondsAgo < (ahora - tArranque)
+end
 
 local function handleStartup(domoticz)
     local ahora = os.time()
-    domoticz.log('Domoticz reiniciado: restaurando colas watchdog desde persistencia...', domoticz.LOG_INFO)
+    domoticz.log('Recuperando colas watchdog desde persistencia...', domoticz.LOG_INFO)
 
     for idxStr, horaLimite in pairs(domoticz.data.limitesParada) do
         local idx = tonumber(idxStr)
@@ -26,14 +34,23 @@ local function handleStartup(domoticz)
             else
                 local dev = domoticz.devices(idx)
                 if dev then
-                    -- nunca antes de RETRASO_ARRANQUE: el hardware EXT puede no estar conectado todavia
-                    local espera = math.max(segundosRestantes, RETRASO_ARRANQUE)
-                    dev.switchOff().afterSec(espera)
-                    domoticz.emitEvent('CHECK_WDG',  idx .. ':' .. horaLimite).afterSec(espera + 2)
                     if segundosRestantes > 0 then
-                        domoticz.log('WATCHDOG RECONSTRUIDO: IDX ' .. idx .. ' (' .. dev.name .. ') re-programado para apagar en ' .. espera .. 's', domoticz.LOG_INFO)
+                        -- aun no vencida: se vuelve a programar el Off (se anula antes cualquier Off ya encolado)
+                        dev.cancelQueuedCommands()
+                        dev.switchOff().afterSec(segundosRestantes)
+                        domoticz.emitEvent('CHECK_WDG',  idx .. ':' .. horaLimite).afterSec(segundosRestantes + CHECK_MARGEN_S)
+                        domoticz.log('WATCHDOG RECONSTRUIDO: IDX ' .. idx .. ' (' .. dev.name .. ') re-programado para apagar en ' .. segundosRestantes .. 's', domoticz.LOG_INFO)
+                    elseif estadoValido(dev, ahora, domoticz.data.tArranque) and not dev.bState then
+                        -- vencida, pero el estado real (tras el SYNC) dice que la EV ya esta cerrada: no hay nada que cerrar
+                        domoticz.data.limitesParada[idxStr] = nil
+                        domoticz.log('WATCHDOG VENCIDO: IDX ' .. idx .. ' (' .. dev.name .. ') hace ' .. (-segundosRestantes) .. 's, la EV ya esta cerrada', domoticz.LOG_INFO)
                     else
-                        domoticz.log('WATCHDOG RECUPERADO: IDX ' .. idx .. ' (' .. dev.name .. ') vencido hace ' .. (-segundosRestantes) .. 's, apagado en ' .. espera .. 's', domoticz.LOG_ERROR)
+                        -- vencida y la EV esta abierta, o su estado no es fiable (no hubo SYNC para ella): se cierra sin condiciones
+                        dev.cancelQueuedCommands()
+                        dev.switchOff()
+                        domoticz.emitEvent('CHECK_WDG',  idx .. ':' .. horaLimite).afterSec(CHECK_MARGEN_S)
+                        domoticz.log('WATCHDOG RECUPERADO: IDX ' .. idx .. ' (' .. dev.name .. ') vencido hace ' .. (-segundosRestantes) .. 's, apagando' ..
+                                     (estadoValido(dev, ahora, domoticz.data.tArranque) and '' or ' (estado no verificado por SYNC)'), domoticz.LOG_ERROR)
                     end
                 else
                     -- el dispositivo puede no estar disponible aun: se conserva la entrada
@@ -68,7 +85,7 @@ local function handleWDG(domoticz, texto, payload)
         dev.switchOff().afterSec(segundos)
         domoticz.data.limitesParada[tostring(idx)] = tiempoLimite
         domoticz.log('DEBUG WDG -> Guardado en persistencia [Key: ' .. tostring(idx) .. '] = ' .. tiempoLimite, domoticz.LOG_DEBUG)
-        domoticz.emitEvent('CHECK_WDG',  idx .. ':' .. tiempoLimite).afterSec(segundos + 2)
+        domoticz.emitEvent('CHECK_WDG',  idx .. ':' .. tiempoLimite).afterSec(segundos + CHECK_MARGEN_S)
         
         domoticz.log('WDG programada parada IDX ' .. idx .. ' (' .. dev.name .. ') en ' .. segundos .. 's', domoticz.LOG_INFO)
     elseif segundos == 0 then
@@ -92,14 +109,27 @@ local function handleCheckWDG(domoticz, data)
     end
     local actual = domoticz.data.limitesParada[idxStr]
     if actual and actual == tonumber(limStr) then
-        domoticz.data.limitesParada[idxStr] = nil -- Limpiamos para que no vuelva a saltar
+        -- La CCR no confirmo la parada. Se verifica que el Off del watchdog haya llegado a cerrar la EV
+        -- (Domoticz no actualiza su estado si no recibe el ACK del Arduino).
         local dev = domoticz.devices(tonumber(idxStr))
         local devName = dev and dev.name or ('IDX ' .. idxStr)
-        
-        local msg = 'WATCHDOG DISPARADO: ' .. devName
-        domoticz.devices('CCR_Watchdog').updateText(msg).silent()
-        domoticz.log(msg .. ' expiró sin confirmación de CCR', domoticz.LOG_ERROR)
-        domoticz.notify('RIEGOERROR', msg, domoticz.PRIORITY_HIGH)
+
+        if dev and dev.bState then
+            -- Sigue abierta: se reenvia el Off una vez. NO se borra la entrada ni se toca el texto "WDG:idx:seg":
+            -- asi SCD_Watchdog sigue viendo un riego de la CCR pendiente de parar y avisa/cierra por su cuenta.
+            -- Cuando Domoticz vea la EV en Off, SCD_Watchdog limpia el texto y la entrada (WDG:idx:-1).
+            dev.switchOff()
+            local msg = 'WATCHDOG: ' .. devName .. ' SIGUE ABIERTA tras su Off, reintentando'
+            domoticz.log(msg .. ' (expiró sin confirmación de CCR)', domoticz.LOG_ERROR)
+            domoticz.notify('RIEGOERROR', msg, domoticz.PRIORITY_HIGH)
+        else
+            -- EV cerrada (o desconocida): el watchdog actuo. Limpiamos para que no vuelva a saltar y lo dejamos visible en el texto
+            domoticz.data.limitesParada[idxStr] = nil
+            local msg = 'ACTUÓ WATCHDOG: ' .. devName
+            domoticz.devices('CCR_Watchdog').updateText(msg).silent()
+            domoticz.log(msg .. ' (expiró sin confirmación de CCR)', domoticz.LOG_ERROR)
+            domoticz.notify('RIEGOERROR', msg, domoticz.PRIORITY_HIGH)
+        end
     elseif actual then
         domoticz.log('CHECK_WDG: IDX ' .. idxStr .. ' rearmado, check obsoleto', domoticz.LOG_DEBUG)
     else
@@ -112,7 +142,7 @@ end
 return {
     on = {
         devices = { 'CCR_Watchdog' },
-        customEvents = { 'CHECK_WDG' },
+        customEvents = { 'CHECK_WDG', 'RECUPERA_WDG' },
         system = { 'start' }
     },
     logging = {
@@ -121,12 +151,20 @@ return {
         marker = "* CCR_WATCHDOG *"
     },
     data = {
-        limitesParada = { initial = {} }
+        limitesParada = { initial = {} },
+        tArranque     = { initial = 0 }   -- hora del ultimo arranque de Domoticz
     },
     execute = function(domoticz, item)
         -- 1. Disparo de arranque
         if item.isSystemEvent and item.trigger == 'start' then
-            domoticz.log('Disparo de sistema/arranque', domoticz.LOG_DEBUG)
+            domoticz.log('Disparo de sistema/arranque: recuperacion en ' .. RETRASO_RECUPERA .. 's', domoticz.LOG_DEBUG)
+            domoticz.data.tArranque = os.time()
+            domoticz.emitEvent('RECUPERA_WDG').afterSec(RETRASO_RECUPERA)
+            return
+        end
+
+        -- 1b. Recuperacion diferida de los watchdogs (ya sincronizado el estado real de las EV)
+        if item.isCustomEvent and item.trigger == 'RECUPERA_WDG' then
             handleStartup(domoticz)
             return
         end
