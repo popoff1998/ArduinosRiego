@@ -42,6 +42,9 @@ local SYNC_ESPERA_S   = 50   -- s que se espera tras pedir la sincronizacion ant
 local ESCALONES_MANUAL = { 15, 30, 45 } -- min: avisos por EV abierta a mano (a los 60 min corta el watchdog del Arduino)
 local GRACIA_ARRANQUE   = 180  -- s tras arrancar Domoticz sin vigilar (los estados no son fiables)
 local MARGEN_CCR_MIN    = 5    -- min sobre el tiempo del WDG antes de avisar de que la EV sigue On
+local REAVISO_CCR_MIN   = 15   -- min entre avisos mientras siga abierta una EV de la CCR pasado ese tiempo
+local LIMPIA_TEXTO_CCR  = true -- true: si el text-device CCR_Watchdog conserva "WDG:idx:seg" y esa EV esta cerrada, se limpia (WDG:idx:-1)
+local LIMPIA_TEXTO_MARGEN_S = 60 -- s que debe tener el texto, sobre su tiempo, antes de limpiarlo (evita pisar un riego recien iniciado)
 local LIMITE_EV_MIN     = 62   -- min maximo de cualquier EV de riego abierta, sea cual sea su origen (el Arduino corta a los 60)
 local REAVISO_ARDUINO_MIN = 30 -- min entre avisos mientras siga abierta pasado el limite
 local LIMITE_GRUPO_MIN  = 180  -- min maximo con un boton de grupo en On
@@ -240,6 +243,27 @@ return {
                 ccrIdx, ccrSeg = tonumber(i), tonumber(s)
             end
         end
+        -- Un texto "WDG:idx:seg" pendiente solo tiene sentido mientras la EV siga abierta. Si Domoticz la ve cerrada y el texto es
+        -- mas antiguo que su tiempo (+ margen), se limpia con el propio mensaje del protocolo (WDG:idx:-1): CCR_Watchdog borra
+        -- asi su entrada y SCD_Watchdog deja de tratar esa EV como riego de la CCR.
+        if ccrIdx and LIMPIA_TEXTO_CCR and wdg.lastUpdate and wdg.lastUpdate.secondsAgo > ccrSeg + LIMPIA_TEXTO_MARGEN_S then
+            local nombreCCR
+            for _, nombre in ipairs(EVS) do
+                local d = domoticz.devices(nombre)
+                if d and d.id == ccrIdx then nombreCCR = nombre end
+            end
+            if nombreCCR then
+                local abierta = false
+                for _, nombre in ipairs(abiertas) do
+                    if nombre == nombreCCR then abierta = true end
+                end
+                if not abierta then
+                    wdg.updateText('WDG:' .. ccrIdx .. ':-1')
+                    domoticz.log('Limpiado texto WDG pendiente de ' .. nombreCCR .. ' (cerrada en Domoticz)', domoticz.LOG_INFO)
+                    ccrIdx, ccrSeg = nil, nil
+                end
+            end
+        end
         local hayCCR = ccrIdx ~= nil
         -- Presencia segun MODO-RIEGO (ver EN_CASA). Solo es 'en casa' si el modo figura como tal
         local mdev = domoticz.devices('MODO-RIEGO')
@@ -252,8 +276,9 @@ return {
         for _, nombre in ipairs(abiertas) do
             local min = minutos(nombre)
             if hayCCR and domoticz.devices(nombre).id == ccrIdx then
-                if min > ccrSeg / 60 + MARGEN_CCR_MIN then
-                    avisa(domoticz, nombre, 'ccr', 1, 'RIEGOERROR',
+                local limiteCCR = ccrSeg / 60 + MARGEN_CCR_MIN
+                if min > limiteCCR then
+                    avisa(domoticz, nombre, 'ccr', 1 + math.floor((min - limiteCCR) / REAVISO_CCR_MIN), 'RIEGOERROR',
                           '*' .. nombre .. ' sigue abierta ' .. math.floor(min) .. ' min tras un riego de la CCR de ' ..
                           math.floor(ccrSeg / 60) .. ' min: revisar*', domoticz.PRIORITY_HIGH,
                           'ccr', { nombre })
